@@ -1,0 +1,28 @@
+# ContentAlchemy - AI Content Marketing Assistant
+# Install: pip install -r requirements.txt
+# Run:     streamlit run src/web_app/streamlit_app.py
+# Versions match the tested .venv; Python 3.11+ (developed on 3.13).
+
+# Web UI (st.container autoscroll, horizontal layouts and bind="query-params" need 1.66+)
+streamlit==1.66.1
+
+# Agent workflow: LangGraph graph, interrupts and custom streaming; SEO blog tool agent
+langgraph==1.2.18
+langchain==1.4.7
+langchain-core==1.7.0
+langchain-openai==1.7.3
+
+# OpenAI Responses API (text generation and streaming)
+openai==3.40.0
+
+# Google search for research and SEO (SERPAPI_KEY)
+serpapi==1.1.2
+
+# Conversations, messages and profiles (MONGODB_URI, mongodb+srv needs dnspython)
+pymongo==4.19.0
+dnspython==2.9.1
+
+# .env configuration
+python-dotenv==1.2.4
+
+typing_extensions==4.16.0

@@ -1,0 +1,22 @@
+[theme]
+base = "dark"
+primaryColor = "#C026D3"
+backgroundColor = "#120B26"
+secondaryBackgroundColor = "#221A3F"
+textColor = "#F5F3FF"
+borderColor = "#3B2F63"
+font = "Poppins:https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap"
+baseRadius = "0.75rem"
+buttonRadius = "full"
+showSidebarBorder = false
+paddingTop = "1rem"
+paddingBottom = "2rem"
+
+[theme.sidebar]
+backgroundColor = "#0E0820"
+secondaryBackgroundColor = "#221A3F"
+paddingTop = "0.25rem"
+paddingBottom = "1rem"
+
+[client]
+toolbarMode = "minimal"

@@ -1,0 +1,217 @@
+/* ContentAlchemy styles. Colors come from the --ca-* variables set by components/theme.py. */
+
+/* Theme picker pinned to the top-right corner, left of the main menu */
+.st-key-theme_picker {
+    position: fixed;
+    top: 0.6rem;
+    right: 3.5rem;
+    left: auto;
+    width: fit-content !important;
+    z-index: 999991;
+}
+
+/* App background */
+[data-testid="stApp"] {
+    background: var(--ca-bg);
+    background-attachment: fixed;
+}
+
+[data-testid="stBottom"] > div,
+[data-testid="stBottomBlockContainer"] {
+    background: transparent;
+}
+
+/* Frosted top bar so scrolled content doesn't show through the navigation */
+[data-testid="stHeader"] {
+    background: var(--ca-sidebar);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--ca-border);
+}
+
+/* Bordered containers and dividers */
+.st-key-brand_voice,
+[class*="st-key-preview_"] {
+    background: var(--ca-surface);
+    border-color: var(--ca-border) !important;
+}
+
+/* Draft and final content windows: compact headings and body text */
+[class*="st-key-preview_"] :is(p, li) {
+    font-size: 0.9rem !important;
+    line-height: 1.6;
+}
+
+[class*="st-key-preview_"] h1 {
+    font-size: 1.45rem !important;
+}
+
+[class*="st-key-preview_"] h2 {
+    font-size: 1.15rem !important;
+    padding-top: 0.75rem !important;
+}
+
+[class*="st-key-preview_"] h3 {
+    font-size: 1rem !important;
+}
+
+[class*="st-key-preview_"] :is(h1, h2, h3) {
+    font-weight: 600 !important;
+}
+
+[data-testid="stApp"] hr {
+    border-color: var(--ca-border);
+    background-color: var(--ca-border);
+}
+
+/* Sidebar: frosted glass, no visible scrollbar */
+[data-testid="stSidebar"] {
+    background: var(--ca-sidebar);
+    backdrop-filter: blur(14px);
+    border-right: 1px solid var(--ca-border);
+}
+
+[data-testid="stSidebar"] > div,
+[data-testid="stSidebarContent"] {
+    background: transparent;
+}
+
+[data-testid="stSidebarContent"],
+[data-testid="stSidebarUserContent"] {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+[data-testid="stSidebarContent"]::-webkit-scrollbar,
+[data-testid="stSidebarUserContent"]::-webkit-scrollbar {
+    display: none;
+}
+
+/* Sidebar history: left-aligned, single-line conversation titles */
+.st-key-history_list button {
+    justify-content: flex-start;
+}
+
+.st-key-history_list button p {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: left;
+}
+
+/* Agent questions, their options and the user's answers use a smaller font */
+[class*="st-key-agent_question_"] :is(p, button, input),
+[class*="st-key-agent_answer_"] p {
+    font-size: 0.875rem;
+}
+
+/* Draft headings (every content type): no dark hover background, text keeps its color */
+[data-testid="stExpander"] summary:hover,
+[data-testid="stExpander"] summary:focus-visible,
+[data-testid="stExpander"] summary:hover *,
+[data-testid="stExpander"] summary:focus-visible * {
+    background: transparent !important;
+    color: inherit !important;
+}
+
+/* Chat avatars: smaller, soft palette tints instead of solid dark circles */
+[data-testid="stChatMessageAvatarAssistant"],
+[data-testid="stChatMessageAvatarUser"] {
+    width: 1.75rem;
+    height: 1.75rem;
+    min-width: 1.75rem;
+    border-radius: 50%;
+    border: 1px solid var(--ca-border);
+}
+
+[data-testid="stChatMessageAvatarAssistant"] {
+    background: color-mix(in srgb, var(--ca-accent) 14%, transparent) !important;
+    color: var(--ca-accent) !important;
+}
+
+[data-testid="stChatMessageAvatarUser"] {
+    background: color-mix(in srgb, var(--ca-accent-2) 14%, transparent) !important;
+    color: var(--ca-accent-2) !important;
+}
+
+[data-testid="stChatMessageAvatarAssistant"] svg,
+[data-testid="stChatMessageAvatarUser"] svg {
+    width: 1rem;
+    height: 1rem;
+    fill: currentColor;
+    color: inherit;
+}
+
+/* Gradient page headings */
+[data-testid="stHeading"] h3 span {
+    background: linear-gradient(90deg, var(--ca-accent), var(--ca-accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 700;
+}
+
+/* Glass cards */
+[data-testid="stChatMessage"],
+[data-testid="stMetric"],
+[data-testid="stExpander"] details {
+    background: var(--ca-surface);
+    border: 1px solid var(--ca-border);
+    border-radius: 1rem;
+    backdrop-filter: blur(8px);
+}
+
+[data-testid="stChatMessage"] {
+    padding: 0.9rem 1rem;
+}
+
+/* Glowing chat input */
+[data-testid="stChatInput"] {
+    border-radius: 1.4rem;
+    box-shadow: 0 0 0 1px var(--ca-accent), 0 0 24px var(--ca-glow);
+}
+
+/* Inputs and secondary buttons follow the palette instead of the base theme */
+[data-testid="stSelectbox"] [role="group"],
+[data-testid="stTextInputRootElement"],
+[data-testid="stTextInputRootElement"] > div,
+[data-testid="stTextAreaRootElement"],
+[data-testid="stTextAreaRootElement"] > div,
+[data-testid="stChatInput"] > div,
+button[data-testid="stBaseButton-secondary"],
+[data-testid="stButtonGroup"] button {
+    background-color: var(--ca-surface) !important;
+    border-color: var(--ca-border) !important;
+}
+
+[data-testid="stApp"] :is(input, textarea) {
+    background-color: transparent !important;
+}
+
+/* Popups use the palette's popover color when it defines one */
+[data-testid="stPopoverBody"],
+[data-testid="stSelectboxVirtualDropdown"],
+[role="listbox"] {
+    background-color: var(--ca-popover, #120B26) !important;
+    border: 1px solid var(--ca-border);
+}
+
+/* Selected pills and segmented options use the accent color */
+button[data-selected="true"] {
+    background-color: var(--ca-glow) !important;
+    border-color: var(--ca-accent) !important;
+    color: var(--ca-accent) !important;
+}
+
+button[data-testid="stBaseButton-secondary"]:hover,
+[data-testid="stButtonGroup"] button:hover {
+    border-color: var(--ca-accent) !important;
+    color: var(--ca-accent) !important;
+}
+
+/* Primary buttons get the theme gradient */
+button[data-testid="stBaseButton-primary"] {
+    background: linear-gradient(90deg, var(--ca-accent), var(--ca-accent-2));
+    border: none;
+    color: var(--ca-on-accent, #FFFFFF);
+    box-shadow: 0 4px 18px var(--ca-glow);
+}
