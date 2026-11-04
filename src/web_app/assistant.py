@@ -3,8 +3,10 @@
 
 A content conversation is one workflow thread (thread_id = conversation_id).
 The workflow pauses with interrupt() whenever it needs the user: the LinkedIn
-agent's profile questions, and content_review's approve / edit / reject
-decision. The chat answers those interrupts by resuming the thread.
+agent's profile questions, the image generator's preference questions,
+content_review's approve / edit / reject decision and image_review's
+approve / edit / regenerate / reject decision. The chat answers those
+interrupts by resuming the thread.
 """
 
 import os
@@ -81,6 +83,10 @@ STEP_LABELS = {
     "content_writer": "Wrote the draft",
     "research_agent": "Researched the topic",
     "seo_blog_writer": "Wrote the SEO blog",
+    "image_request_analyzer": "Read your image request",
+    "image_preference_interaction": "Saved your answer",
+    "image_generator": "Generated the image",
+    "image_review": "Recorded your review",
 }
 
 # Auto mode starts an agent when the message clearly asks for that content.
@@ -96,6 +102,16 @@ REVIEW_LABELS = {
     "edit": "Edited the draft",
     "reject": "Rejected the draft",
 }
+
+IMAGE_REVIEW_LABELS = {
+    "approve": "Approved the image",
+    "edit": "Edited the image prompt",
+    "regenerate": "Regenerate the image",
+    "reject": "Rejected the image",
+}
+
+# Interrupts that wait for a review decision rather than an answer to a question.
+REVIEW_INTERACTIONS = {"content_review", "image_review"}
 
 CHAT_SYSTEM_PROMPT = (
     "You are a helpful, knowledgeable general-purpose assistant. Answer any "
@@ -205,6 +221,7 @@ def fetch_approved_content(user_id: str) -> list[dict]:
             "prompt": conversation.get("topic") or conversation["title"],
             "body": message["content"],
             "data": structured.get(conversation["conversation_id"], {}),
+            "metadata": message.get("metadata", {}),
             "created_at": message["created_at"],
         }
     return list(items.values())
@@ -291,7 +308,7 @@ def record_pause(user_id: str, conversation_id: str, content_type: str, payload:
     if payload is None:
         return
 
-    if payload.get("interaction_type") == "content_review":
+    if payload.get("interaction_type") in REVIEW_INTERACTIONS:
         update_conversation(conversation_id, user_id, status="awaiting_approval")
     else:
         add_message(
@@ -424,6 +441,98 @@ def submit_decision(
             stored_type,
             state["final_content"],
             agent_name="content_review",
+        )
+
+    update_conversation(
+        conversation_id,
+        user_id,
+        status="completed" if status == "approved" else "archived",
+        metadata_updates={"approval_status": status},
+    )
+    refresh_history()
+    return None, state
+
+
+def submit_image_decision(
+    user_id: str,
+    conversation_id: str,
+    action: str,
+    edited_prompt: str = "",
+    image: dict | None = None,
+    on_step: Callable[[str], None] | None = None,
+    on_event: Callable[[dict], None] | None = None,
+) -> tuple[dict | None, dict]:
+    """Resume image_review with approve / edit / regenerate / reject.
+
+    Edit and regenerate send the thread back to the image generator, so a new
+    image_review payload comes back. Approve and reject end the workflow.
+    image is the reviewed image ({"path", "prompt", "message_id"}), used when the checkpoint is gone.
+    """
+
+    if action not in IMAGE_REVIEW_LABELS:
+        raise ValueError(f"Unsupported image review action: {action}")
+
+    decision = {"action": action}
+    if action == "edit":
+        decision["edited_prompt"] = edited_prompt.strip()
+        if not decision["edited_prompt"]:
+            raise ValueError("The edited image prompt cannot be empty.")
+
+    image = image or {}
+    has_checkpoint = get_pending_payload(conversation_id) is not None
+    if not has_checkpoint and action in {"edit", "regenerate"}:
+        raise ValueError(
+            "This image can no longer be regenerated (the app was restarted). "
+            "Approve or reject it, or start a new conversation."
+        )
+
+    add_message(
+        conversation_id,
+        user_id,
+        "user",
+        "review",
+        "image",
+        IMAGE_REVIEW_LABELS[action] + (f": {decision['edited_prompt']}" if action == "edit" else ""),
+        metadata={"review_action": action},
+    )
+
+    if has_checkpoint:
+        payload, state = run_workflow(conversation_id, Command(resume=decision), on_step, on_event)
+    else:
+        # Apply the reviewer's rules here and keep the stored image message in sync.
+        payload = None
+        status = "rejected" if action == "reject" else "approved"
+        state = {
+            "image_status": status,
+            "image_review_action": action,
+            "image_path": image.get("path", ""),
+            "image_prompt": image.get("prompt", ""),
+            "final_content": "" if action == "reject" else image.get("path", ""),
+        }
+        if image.get("message_id"):
+            update_message(
+                image["message_id"],
+                conversation_id,
+                user_id,
+                status=status,
+                metadata_updates={"image_status": status},
+            )
+
+    if payload is not None:
+        record_pause(user_id, conversation_id, "image", payload)
+        return payload, state
+
+    status = state.get("image_status")
+    if status == "approved":
+        add_message(
+            conversation_id,
+            user_id,
+            "assistant",
+            "final_content",
+            "image",
+            state["final_content"],
+            agent_name="image_review",
+            metadata={"image_prompt": state.get("image_prompt", "")},
         )
 
     update_conversation(

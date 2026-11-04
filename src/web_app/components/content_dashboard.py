@@ -13,6 +13,7 @@ from src.web_app.assistant import (
     remove_approved_content,
     save_approved_content,
 )
+from src.web_app.components.image_view import render_download, render_image
 from src.web_app.components.research_view import parse_research, render_sources
 from src.web_app.components.state import go_to, make_title
 from src.web_app.components.theme import DRAFT_HEIGHT
@@ -110,8 +111,34 @@ def remove_item(item: dict) -> None:
     st.toast("Removed from the dashboard", icon=":material/delete:")
 
 
+def render_image_item(item: dict) -> None:
+    """An approved image: preview, prompt and download. Images are not edited here."""
+
+    data = render_image(item["body"], item.get("metadata", {}).get("image_prompt", ""))
+    with st.container(horizontal=True):
+        render_download(data, item["id"], key=f"download_{item['id']}", primary=False)
+        st.button(
+            "Remove",
+            icon=":material/delete:",
+            help="Remove from the dashboard. The conversation stays in your history.",
+            key=f"delete_{item['id']}",
+            on_click=remove_item,
+            args=(item,),
+        )
+
+
 def render_item(item: dict) -> None:
     info = CONTENT_TYPES[item["type"]]
+
+    if item["type"] == "image":
+        with st.container(horizontal=True, vertical_alignment="center"):
+            st.badge(info["label"], icon=info["icon"], color=info["color"])
+            st.badge("Approved", icon=":material/verified:", color="green")
+            st.caption(f"Approved {item['created_at']:%b %d, %H:%M}")
+        st.subheader(item["title"], anchor=False)
+        st.caption(f"Request: {item['prompt']}")
+        render_image_item(item)
+        return
 
     with st.container(horizontal=True, vertical_alignment="center"):
         st.badge(info["label"], icon=info["icon"], color=info["color"])

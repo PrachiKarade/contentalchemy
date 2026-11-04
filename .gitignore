@@ -33,3 +33,6 @@ logs/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Generated image artifacts
+generated/images/
