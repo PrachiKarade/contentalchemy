@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from typing_extensions import TypedDict
 
 from langchain_core.messages import AnyMessage
-from langgraph.graph.message import add_messages
+from langgraph.graph.message import Any, add_messages
 
 
 class ResearchResult(TypedDict, total=False):
@@ -19,7 +19,7 @@ class HumanInteraction(TypedDict, total=False):
     options: list[str]  # the possible options or responses provided to the human user
     content: str        # the content related to the interaction
     status: Literal["pending", "completed"] # the status of the interaction
-    response: str       # the response provided by the human user
+    response: str | dict[str, Any]     # the response provided by the human user
     approved: bool      # whether the interaction has been approved
 
 
@@ -69,9 +69,29 @@ class ContentState(TypedDict, total=False):
     #linkedin_profile_markdown: str
 
     content_strategy: str   # the strategy for generating the content
-    image_prompt: str       # the prompt for generating the image
-    image_path: str         # the path to the generated image
-    
+
+      # Image generation
+    image_prompt: str
+    image_path: str
+    image_url: str
+    generated_image_message_id: str
+
+    # Image generation preferences
+    image_purpose: str
+    image_visual_style: str
+    image_orientation: Literal["square", "portrait", "landscape"]
+    image_quality: Literal["standard", "hd"]
+    image_size: Literal["1024x1024", "1024x1792", "1792x1024"]
+    image_style: Literal["vivid", "natural"]
+
+    # Image generation tracking
+    image_status: Literal[ "pending", "generated",  "approved", "rejected"]
+    image_review_action: Literal[  "approve", "edit", "regenerate", "reject"]
+    image_error: str
+    image_preference_error: str    # why the last preference answer was not accepted
+    image_generation_count: int  
+
+
     current_content: str    # the currently generated content  
     edited_content : str
     final_content  : str    # the reviewed content: the user's edit, the approved draft, or empty when rejected

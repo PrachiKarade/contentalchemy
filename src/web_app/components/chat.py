@@ -3,10 +3,13 @@
 
 With a content type selected (or detected in Auto mode), each message drives the LangGraph workflow:
 the agent's questions appear here, the user answers here, and the draft
-comes back for approve / edit / reject.
+comes back for approve / edit / reject. The image generator asks for its
+preferences in one form, then shows the image for approve / edit / regenerate /
+reject, and offers the download once approved.
 """
 
 import time
+from contextlib import nullcontext
 
 import streamlit as st
 
@@ -20,16 +23,21 @@ from src.web_app.assistant import (
     get_current_user,
     save_chat_turn,
     start_agent,
+    submit_image_decision,
 )
+from src.web_app.components.image_view import render_image_message
 from src.web_app.components.sidebar import get_settings
 from src.web_app.components.theme import DRAFT_HEIGHT
 from src.web_app.components.state import (
     decide,
+    finish_image_review,
     go_to,
+    is_image_review,
     is_review,
     reset_conversation,
     show_payload,
     start_edit,
+    start_image_edit,
 )
 
 logger = setup_logger("chat")
@@ -39,8 +47,10 @@ AGENT_TITLES = {
     "research": "Research agent",
     "blog": "SEO blog writer",
     "linkedin": "LinkedIn post writer",
-    "image": "Image prompt designer",
+    "image": "Image generator",
 }
+
+IMAGE_SPINNER = "Creating your image. This usually takes 15 to 60 seconds..."
 
 # Redraw the streamed draft at most this often (seconds); redrawing on every token is slow.
 STREAM_REFRESH = 0.15
@@ -50,6 +60,7 @@ SUGGESTIONS = {
     ":violet[:material/work:] Draft a LinkedIn post": "Write a LinkedIn post about how AI agents are changing software development",
     ":green[:material/article:] Write an SEO blog": "Write an SEO blog about how small businesses can use AI for content marketing",
     ":blue[:material/travel_explore:] Research a topic": "Research the latest trends in AI content marketing",
+    ":orange[:material/image:] Generate an image": "Create an image of a team collaborating with AI agents in a modern office",
     ":gray[:material/lightbulb:] Explain a concept": "Explain how large language models work in simple terms",
     ":orange[:material/checklist:] Plan something": "Help me plan a productive work week",
 }
@@ -61,9 +72,15 @@ DECISION_WORDS = {
 }
 
 
-def parse_decision(text: str) -> str | None:
+IMAGE_DECISION_WORDS = {
+    **DECISION_WORDS,
+    "regenerate": ["regenerate", "retry", "again", "another one", "new one"],
+}
+
+
+def parse_decision(text: str, words_by_action: dict[str, list[str]] = DECISION_WORDS) -> str | None:
     text = text.strip().lower()
-    for action, words in DECISION_WORDS.items():
+    for action, words in words_by_action.items():
         if any(text == word or text.startswith(word + " ") for word in words):
             return action
     return None
@@ -97,7 +114,14 @@ def build_answer(payload: dict, selected: list[str] | None, typed: str) -> tuple
 
 
 def is_last_question(payload: dict) -> bool:
+    # The image agent only asks for missing preferences, so it says which question is last.
+    if "is_last" in payload:
+        return bool(payload["is_last"])
     return payload.get("lookup_key") == LINKEDIN_PROFILE_QUESTIONS[-1]["key"]
+
+
+def is_image_payload(payload: dict | None) -> bool:
+    return bool(payload) and payload.get("agent") == "image_generator"
 
 
 def render_question(message: dict, index: int, active: bool) -> tuple[dict, str] | None:
@@ -121,7 +145,10 @@ def render_question(message: dict, index: int, active: bool) -> tuple[dict, str]
         other_text = st.text_input(
             "Your answer", placeholder="Type your answer", key=f"{key}_other", label_visibility="collapsed"
         )
-        label = "Generate draft" if is_last_question(payload) else "Next question"
+        if is_image_payload(payload):
+            label = "Generate image" if is_last_question(payload) else "Next question"
+        else:
+            label = "Generate draft" if is_last_question(payload) else "Next question"
         if not st.button(label, type="primary", icon=":material/arrow_forward:", key="other_next"):
             return None
         if not other_text.strip():
@@ -158,12 +185,25 @@ def render_messages() -> tuple[dict, str] | None:
 
     messages = st.session_state.messages
     pending = st.session_state.pending
+    review = st.session_state.get("review") or {}
     answer = None
+
+    # Only the newest image can be reviewed or downloaded; older ones are earlier attempts.
+    image_indexes = [index for index, message in enumerate(messages) if message["kind"] == "image"]
+    latest_image = image_indexes[-1] if image_indexes else None
 
     for index, message in enumerate(messages):
         latest = index == len(messages) - 1
         with st.chat_message(message["role"]):
-            if message["kind"] == "question":
+            if message["kind"] == "image":
+                is_current = index == latest_image
+                render_image_message(
+                    message,
+                    # Hide the buttons while a queued decision runs below.
+                    active=is_current and is_image_review(pending) and not st.session_state.get("image_action"),
+                    approved=is_current and review.get("type") == "image" and review.get("status") == "approved",
+                )
+            elif message["kind"] == "question":
                 answer = render_question(message, index, latest and pending is not None and not is_review(pending))
             elif message["kind"] == "draft":
                 render_draft(message, latest and is_review(pending))
@@ -182,6 +222,8 @@ def chat_placeholder(content_type: str | None) -> str:
         return "Start a new conversation to continue"
     if is_review(pending):
         return "Type approve, edit or reject..."
+    if is_image_review(pending):
+        return "Type approve, regenerate, reject, or edit: <new prompt>..."
     if pending:
         return "Type your answer, or pick options above..."
     if content_type:
@@ -251,7 +293,7 @@ class LiveProgress:
         self.status.update(label=label, state=state, expanded=False)
 
 
-def run_agent_step(label: str, step) -> bool:
+def run_agent_step(label: str, step, spinner: str | None = None) -> bool:
     """Run one workflow step with live progress in an assistant bubble. Returns True on success.
 
     step(on_step, on_event) runs the workflow and returns (payload, state, content_type).
@@ -260,13 +302,18 @@ def run_agent_step(label: str, step) -> bool:
     with st.chat_message("assistant"):
         progress = LiveProgress(label)
         try:
-            payload, state, content_type = step(progress.note, progress.event)
+            # Image generation streams no text, so a spinner shows it is still working.
+            with st.spinner(spinner, show_time=True) if spinner else nullcontext():
+                payload, state, content_type = step(progress.note, progress.event)
         except Exception as error:
             logger.exception("Workflow step failed")
             progress.finish("Something went wrong", state="error")
             st.error(str(error), icon=":material/error:")
             return False
-        progress.finish("Draft ready for review" if is_review(payload) else "Done")
+        if is_image_review(payload):
+            progress.finish("Image ready for review")
+        else:
+            progress.finish("Draft ready for review" if is_review(payload) else "Done")
 
     if payload is None:
         errors = state.get("errors") or ["The workflow finished without a draft."]
@@ -297,8 +344,15 @@ def handle_answer(response: dict, answer_text: str) -> None:
         )
         return payload, state, content_type
 
-    label = "Writing your draft..." if is_last_question(pending) else "Loading the next question..."
-    if run_agent_step(label, step):
+    spinner = None
+    if is_image_payload(pending) and is_last_question(pending):
+        label = "Generating your image..."
+        spinner = IMAGE_SPINNER
+    elif is_last_question(pending):
+        label = "Writing your draft..."
+    else:
+        label = "Loading the next question..."
+    if run_agent_step(label, step, spinner):
         st.rerun()
     else:
         st.session_state.messages.pop()
@@ -318,6 +372,92 @@ def handle_decision_text(prompt: str) -> None:
     st.rerun()
 
 
+IMAGE_ACTION_PROGRESS = {
+    "approve": "Approving your image...",
+    "edit": "Generating a new image from your prompt...",
+    "regenerate": "Regenerating your image...",
+    "reject": "Rejecting the image...",
+}
+
+IMAGE_ACTION_BUBBLES = {
+    "approve": "Approve",
+    "edit": "Edit prompt",
+    "regenerate": "Regenerate",
+    "reject": "Reject",
+}
+
+
+def handle_image_action(action: dict) -> None:
+    """Send approve / edit / regenerate / reject to image_review, showing progress while it runs."""
+
+    review = st.session_state.review
+    name = action["action"]
+    text = IMAGE_ACTION_BUBBLES[name]
+    if name == "edit":
+        text += f": {action['edited_prompt']}"
+    add_bubble("user", text)
+
+    with st.chat_message("assistant"):
+        progress = LiveProgress(IMAGE_ACTION_PROGRESS[name])
+        try:
+            spinner = IMAGE_SPINNER if name in {"edit", "regenerate"} else "Saving your decision..."
+            with st.spinner(spinner, show_time=True):
+                payload, state = submit_image_decision(
+                    get_current_user()["user_id"],
+                    review["conversation_id"],
+                    name,
+                    action["edited_prompt"],
+                    image={"path": review["content"], "prompt": review.get("image_prompt", ""), "message_id": review.get("message_id")},
+                    on_step=progress.note,
+                    on_event=progress.event,
+                )
+        except Exception as error:
+            logger.exception("Image review failed")
+            progress.finish("Something went wrong", state="error")
+            st.error(str(error), icon=":material/error:")
+            st.session_state.messages.pop()
+            return
+        progress.finish("Image ready for review" if payload else "Done")
+
+    finish_image_review(name, payload, state)
+    st.rerun()
+
+
+def handle_image_decision_text(prompt: str) -> None:
+    """Typed review replies: approve, regenerate, reject, "edit" or "edit: <new prompt>"."""
+
+    text = prompt.strip()
+    new_prompt = ""
+    if text.lower().startswith("edit"):
+        action = "edit"
+        new_prompt = text[len("edit"):].lstrip(" :").strip()
+    else:
+        action = parse_decision(text, IMAGE_DECISION_WORDS)
+    can_regenerate = not st.session_state.pending.get("checkpoint_lost")
+
+    if action == "edit":
+        if new_prompt and can_regenerate:
+            handle_image_action({"action": "edit", "edited_prompt": new_prompt})
+            return
+        if can_regenerate:
+            start_image_edit()
+            st.rerun()
+    elif action in {"approve", "reject"} or (action == "regenerate" and can_regenerate):
+        handle_image_action({"action": action, "edited_prompt": ""})
+        return
+
+    st.session_state.messages += [
+        {"role": "user", "kind": "text", "content": prompt},
+        {
+            "role": "assistant",
+            "kind": "text",
+            "content": "Please reply with **approve**, **regenerate**, **reject** or **edit: your new prompt**, "
+            "or use the buttons above.",
+        },
+    ]
+    st.rerun()
+
+
 def handle_request(prompt: str, content_type: str) -> None:
     # A finished workflow or a different agent starts a new conversation.
     if st.session_state.conversation_id and (
@@ -334,7 +474,8 @@ def handle_request(prompt: str, content_type: str) -> None:
         st.session_state.conversation_id = conversation_id
         return payload, state, content_type
 
-    if run_agent_step("Analyzing your request...", step):
+    spinner = IMAGE_SPINNER if content_type == "image" else None
+    if run_agent_step("Analyzing your request...", step, spinner):
         st.rerun()
     else:
         st.session_state.messages.pop()
@@ -378,6 +519,13 @@ def render_greeting(agent_type: str | None) -> None:
                 "I'll research it, find the right keywords and write the post for your review."
             )
             st.caption("Tip: set the tone, target audience and keywords in the sidebar.")
+        elif agent_type == "image":
+            st.markdown(
+                f"Hello {name}! I'm your image generator. Describe the image you want. "
+                "If you don't mention its purpose, style, orientation or quality, I'll ask you one question at a time, "
+                "then create it for your review."
+            )
+            st.caption("You can approve it, edit the prompt, regenerate it or reject it, and download it once approved.")
         elif agent_type:
             label = CONTENT_TYPES[agent_type]["label"]
             st.markdown(f"Hello {name}! I'm your {label} agent. What would you like to create?")
@@ -433,8 +581,15 @@ def render_chat() -> None:
 
     pending = st.session_state.pending
 
-    if picked_answer:
+    # An image review decision queued by a button here or in the Content tab.
+    image_action = st.session_state.pop("image_action", None)
+
+    if image_action and is_image_review(pending):
+        handle_image_action(image_action)
+    elif picked_answer:
         handle_answer(*picked_answer)
+    elif prompt and is_image_review(pending):
+        handle_image_decision_text(prompt)
     elif prompt and pending and not is_review(pending):
         response, answer_text = build_answer(pending, None, prompt)
         handle_answer(response, answer_text)

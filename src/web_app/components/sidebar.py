@@ -18,7 +18,7 @@ CONTENT_TYPE_CAPTIONS = {
     "research": "In-depth brief with key findings",
     "blog": "Long-form, search-optimized article",
     "linkedin": "Engaging post with hashtags",
-    "image": "Optimized image-generation prompt",
+    "image": "AI-generated image you can review and download",
 }
 
 HISTORY_TITLE_LENGTH = 34

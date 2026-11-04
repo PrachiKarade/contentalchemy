@@ -4,8 +4,17 @@
 import streamlit as st
 
 from src.web_app.assistant import CONTENT_TYPES
+from src.web_app.components.image_view import render_download, render_image, render_image_actions
 from src.web_app.components.research_view import render_research
-from src.web_app.components.state import cancel_edit, decide, go_to, is_review, reset_session, start_edit
+from src.web_app.components.state import (
+    cancel_edit,
+    decide,
+    go_to,
+    is_image_review,
+    is_review,
+    reset_session,
+    start_edit,
+)
 from src.web_app.components.theme import DRAFT_HEIGHT
 
 # Shown above a fresh draft to ask for the user's review.
@@ -13,7 +22,7 @@ READY_TITLES = {
     "research": "Your research report is ready",
     "blog": "Your SEO blog is ready",
     "linkedin": "Your LinkedIn post is ready",
-    "image": "Your image prompt is ready",
+    "image": "Your image is ready",
 }
 
 STATUS_BADGES = {
@@ -105,6 +114,37 @@ def render_final(review: dict) -> None:
         st.button("New conversation", icon=":material/add_comment:", key="review_new", on_click=reset_session)
 
 
+def render_image_review(review: dict) -> None:
+    """The generated image: review it (decisions run in the Chat tab), or download it once approved."""
+
+    if review["status"] == "pending":
+        pending = st.session_state.get("pending")
+        if not review["edited"]:
+            st.info(
+                "Approve it, edit the prompt, regenerate it or reject it. A new image is generated in the Chat tab.",
+                title=READY_TITLES["image"],
+                icon=":material/rate_review:",
+            )
+        else:
+            st.info("You edited the prompt for this image. Approve it to finish.", icon=":material/edit:")
+        render_image(review["content"], review.get("image_prompt", ""), expanded_prompt=True)
+        if is_image_review(pending):
+            render_image_actions("review", can_regenerate=not pending.get("checkpoint_lost"))
+        return
+
+    if review["status"] == "approved":
+        st.success("Approved. Your image is ready to download.", icon=":material/verified:")
+    else:
+        st.warning("This image was rejected.", icon=":material/block:")
+    path = review["final_content"] or review["content"]
+    data = render_image(path, review.get("image_prompt", ""))
+
+    with st.container(horizontal=True):
+        if review["status"] == "approved":
+            render_download(data, review["conversation_id"], key="review_image_download")
+        st.button("New conversation", icon=":material/add_comment:", key="review_new", on_click=reset_session)
+
+
 def render_content() -> None:
     st.subheader(":material/description: Content", anchor=False)
 
@@ -130,7 +170,9 @@ def render_content() -> None:
     if review["topic"]:
         st.caption(f"Request: {review['topic']}")
 
-    if review["status"] == "pending":
+    if review["type"] == "image":
+        render_image_review(review)
+    elif review["status"] == "pending":
         render_pending(review)
     else:
         render_final(review)
