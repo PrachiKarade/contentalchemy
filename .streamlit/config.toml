@@ -1,20 +1,31 @@
 [theme]
-base = "dark"
-primaryColor = "#C026D3"
-backgroundColor = "#120B26"
-secondaryBackgroundColor = "#221A3F"
-textColor = "#F5F3FF"
-borderColor = "#3B2F63"
-font = "Poppins:https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap"
-baseRadius = "0.75rem"
-buttonRadius = "full"
+base = "light"
+primaryColor = "#6D28D9"
+backgroundColor = "#F6F3FF"
+secondaryBackgroundColor = "#EFE8FF"
+textColor = "#1E1B3A"
+borderColor = "#E4DCFA"
+linkColor = "#6D28D9"
+codeBackgroundColor = "#F5F1FF"
+violetColor = "#6D28D9"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+baseFontSize = 14
+headingFontSizes = ["26px", "20px", "17px", "15px", "14px", "12px"]
+headingFontWeights = [600, 600, 600, 600, 500, 500]
+baseRadius = "8px"
+buttonRadius = "8px"
+showWidgetBorder = true
 showSidebarBorder = false
 paddingTop = "1rem"
 paddingBottom = "2rem"
 
+# Dark navy sidebar. The Content type and Brand voice cards inside it are light (see styles.css).
 [theme.sidebar]
-backgroundColor = "#0E0820"
-secondaryBackgroundColor = "#221A3F"
+backgroundColor = "#0E1330"
+secondaryBackgroundColor = "#1A2149"
+textColor = "#E4E7F5"
+borderColor = "#232B57"
+primaryColor = "#8B5CF6"
 paddingTop = "0.25rem"
 paddingBottom = "1rem"
 

@@ -7,6 +7,10 @@ from src.integrations.openai_client import generate_text
 from src.integrations.image_clients import generate_image
 from src.prompts.image_generator_prompt import IMAGE_PROMPT_SYSTEM
 from src.repositories.message_repository import add_message, update_message
+from src.integrations.providers.images.provider_errors import (
+    ImageProviderError,
+    InsufficientCreditsError,
+)
 
 logger = setup_logger("image_generator")
 
@@ -249,8 +253,51 @@ def image_generator_node(state: ContentState) -> dict:
             },
         }
 
+    except InsufficientCreditsError as exc:
+        logger.warning("Image generation stopped: %s", exc)
+
+        error_message = (
+            "Image generation is unavailable because the configured "
+            "image provider has insufficient credits. "
+            "Please try again later."
+        )
+
+        status({
+            "event": "status",
+            "text": error_message,
+        })
+
+        return {
+            "image_status": "failed",
+            "image_error": error_message,
+            "human_interaction": None,
+            "current_agent": "image_generator",
+            "current_content": error_message,
+            "errors": [error_message],
+        }
+
+    except ImageProviderError as exc:
+        logger.warning("Image provider failed: %s", exc)
+
+        error_message = (
+            "Image generation is currently unavailable. "
+            "Please try again later."
+        )
+
+        status({
+            "event": "status",
+            "text": error_message,
+        })
+
+        return {
+              "image_status": "failed",
+             "image_error": error_message,
+             "human_interaction": None,
+             "current_agent": "image_generator",
+             "current_content": error_message,
+             "errors": [error_message],
+        }
+
     except Exception:
         logger.exception("Image generation node failed.")
-        # Re-raise so the workflow does not send a failed generation
-        # to image_review as though an image had been created.
         raise

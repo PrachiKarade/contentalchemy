@@ -1,8 +1,6 @@
 
 """Content dashboard: approved content from all conversations, stored in MongoDB."""
 
-import re
-
 import streamlit as st
 
 from src.core.logger import setup_logger
@@ -14,49 +12,13 @@ from src.web_app.assistant import (
     save_approved_content,
 )
 from src.web_app.components.image_view import render_download, render_image
-from src.web_app.components.research_view import parse_research, render_sources
+from src.web_app.components.research_view import parse_research, render_sources, render_strategy
 from src.web_app.components.state import go_to, make_title
 from src.web_app.components.theme import DRAFT_HEIGHT
 
 logger = setup_logger("content_dashboard")
 
-LINKEDIN_CHAR_LIMIT = 3000
 META_DESCRIPTION_LIMIT = 160
-WORDS_PER_MINUTE = 200
-
-
-def content_stats(item: dict) -> dict:
-    body = item["body"]
-    words = len(body.split())
-    return {
-        "words": words,
-        "read_time": max(1, round(words / WORDS_PER_MINUTE)),
-        "characters": len(body),
-        "headings": len(re.findall(r"^#{1,6}\s", body, re.MULTILINE)),
-        "hashtags": len(re.findall(r"#\w+", body)),
-    }
-
-
-def render_stats(item: dict) -> None:
-    stats = content_stats(item)
-    with st.container(horizontal=True):
-        st.metric("Words", stats["words"], border=True)
-        st.metric("Read time", f"{stats['read_time']} min", border=True)
-        if item["type"] == "linkedin":
-            st.metric(
-                "Characters",
-                f"{stats['characters']} / {LINKEDIN_CHAR_LIMIT}",
-                border=True,
-                help="LinkedIn posts are limited to 3000 characters.",
-            )
-            st.metric("Hashtags", stats["hashtags"], border=True)
-        elif item["type"] == "research":
-            research = parse_research(item["body"])
-            st.metric("Findings", len(research["findings"]), border=True)
-            st.metric("Sources", len(research["sources"]), border=True)
-        else:
-            st.metric("Characters", stats["characters"], border=True)
-            st.metric("Headings", stats["headings"], border=True)
 
 
 def render_seo_details(data: dict) -> None:
@@ -144,26 +106,35 @@ def render_item(item: dict) -> None:
         st.badge(info["label"], icon=info["icon"], color=info["color"])
         st.badge("Approved", icon=":material/verified:", color="green")
         st.caption(f"Approved {item['created_at']:%b %d, %H:%M}")
-    st.subheader(make_title(item["body"], item["title"]), anchor=False)
+    # A LinkedIn post has no heading, so its title would just repeat the request shown below.
+    if item["type"] != "linkedin":
+        if item["type"] == "blog":
+            # A blog body opens with "## Introduction"; use its SEO title instead.
+            title = item.get("data", {}).get("seo_title") or item["title"]
+        else:
+            title = make_title(item["body"], item["title"])
+        st.subheader(title, anchor=False)
     st.caption(f"Request: {item['prompt']}")
-
-    render_stats(item)
 
     tab_names = [":material/visibility: Preview", ":material/edit_note: Edit"]
     if item["type"] == "research":
-        tab_names.append(":material/link: Sources")
+        tab_names += [":material/strategy: Content strategy", ":material/link: Sources"]
     elif item["type"] == "blog":
         tab_names.append(":material/travel_explore: SEO details")
-    preview_tab, edit_tab, *extra_tab = st.tabs(tab_names)
+    preview_tab, edit_tab, *extra_tabs = st.tabs(tab_names)
+    research = parse_research(item["body"]) if item["type"] == "research" else None
     with preview_tab:
         with st.container(border=True, height=DRAFT_HEIGHT, key=f"preview_{item['id']}"):
-            st.markdown(item["body"])
-    if extra_tab:
-        with extra_tab[0], st.container(height=DRAFT_HEIGHT, border=False):
-            if item["type"] == "research":
-                render_sources(parse_research(item["body"])["sources"])
-            else:
-                render_seo_details(item["data"])
+            st.markdown(research["report"] if research else item["body"])
+    if research:
+        strategy_tab, sources_tab = extra_tabs
+        with strategy_tab, st.container(height=DRAFT_HEIGHT, border=False):
+            render_strategy(research["strategy"])
+        with sources_tab, st.container(height=DRAFT_HEIGHT, border=False):
+            render_sources(research["sources"])
+    elif extra_tabs:
+        with extra_tabs[0], st.container(height=DRAFT_HEIGHT, border=False):
+            render_seo_details(item["data"])
     with edit_tab:
         st.text_area(
             "Content",
@@ -201,7 +172,6 @@ def render_item(item: dict) -> None:
 
 
 def render_dashboard() -> None:
-    st.subheader("Content dashboard", anchor=False)
     st.caption("All content you have approved. Pick a piece to preview, edit or download it.")
 
     items = list_approved_content(get_current_user()["user_id"])
@@ -213,43 +183,49 @@ def render_dashboard() -> None:
         )
         return
 
-    present_types = [key for key in CONTENT_TYPES if any(item["type"] == key for item in items)]
-    selected_types = st.pills(
-        "Filter by type",
-        present_types,
-        selection_mode="multi",
-        default=present_types,
-        format_func=lambda key: f"{CONTENT_TYPES[key]['icon']} {CONTENT_TYPES[key]['label']}",
-    )
-
-    visible = [item for item in items if item["type"] in selected_types]
-    if not visible:
-        st.caption("No content matches the selected types.")
-        return
-
-    items_by_id = {item["id"]: item for item in visible}
-
     # Preselect the conversation picked in the sidebar history, if it has approved content.
     selected = st.session_state.pop("dashboard_selected", None)
-    if selected and selected not in items_by_id and selected == st.session_state.get("conversation_id"):
+    approved_ids = {item["id"] for item in items}
+    if selected and selected not in approved_ids and selected == st.session_state.get("conversation_id"):
         # Opened from history, but nothing approved yet: its draft is in the Content tab.
         st.info(
             "The conversation you opened has no approved content yet. Review its draft in the Content tab.",
             icon=":material/pending:",
         )
         st.button("Open Content tab", icon=":material/description:", on_click=go_to, args=("create",))
-    if selected in items_by_id:
-        st.session_state["dashboard_item"] = selected
-    elif st.session_state.get("dashboard_item") not in items_by_id:
-        st.session_state.pop("dashboard_item", None)
 
-    item_id = st.selectbox(
-        "Content piece",
-        list(items_by_id),
-        format_func=lambda key: (
-            f"{CONTENT_TYPES[items_by_id[key]['type']]['label']} · {items_by_id[key]['title']}"
-        ),
-        key="dashboard_item",
-    )
+    present_types = [key for key in CONTENT_TYPES if any(item["type"] == key for item in items)]
+    with st.container(horizontal=True, vertical_alignment="center"):
+        selected_types = st.pills(
+            "Filter by type",
+            present_types,
+            selection_mode="multi",
+            default=present_types,
+            format_func=lambda key: f"{CONTENT_TYPES[key]['icon']} {CONTENT_TYPES[key]['label']}",
+            label_visibility="collapsed",
+            width="content",
+        )
+        visible = [item for item in items if item["type"] in selected_types]
+        items_by_id = {item["id"]: item for item in visible}
+
+        if selected in items_by_id:
+            st.session_state["dashboard_item"] = selected
+        elif st.session_state.get("dashboard_item") not in items_by_id:
+            st.session_state.pop("dashboard_item", None)
+
+        item_id = st.selectbox(
+            "Content piece",
+            list(items_by_id),
+            format_func=lambda key: (
+                f"{CONTENT_TYPES[items_by_id[key]['type']]['label']} · {items_by_id[key]['title']}"
+            ),
+            key="dashboard_item",
+            label_visibility="collapsed",
+            placeholder="No content matches the selected types",
+            disabled=not items_by_id,
+        )
+
+    if item_id is None:
+        return
     st.divider()
     render_item(items_by_id[item_id])

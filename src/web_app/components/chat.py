@@ -17,7 +17,10 @@ from src.agents.linkedin_interaction import LINKEDIN_PROFILE_QUESTIONS
 from src.core.logger import setup_logger
 from src.web_app.assistant import (
     CONTENT_TYPES,
+    agent_intro,
     answer_question,
+    image_failed,
+    workflow_error,
     chat_reply,
     detect_content_type,
     get_current_user,
@@ -42,28 +45,13 @@ from src.web_app.components.state import (
 
 logger = setup_logger("chat")
 
-# Chat title for each content agent picked in the sidebar.
-AGENT_TITLES = {
-    "research": "Research agent",
-    "blog": "SEO blog writer",
-    "linkedin": "LinkedIn post writer",
-    "image": "Image generator",
-}
-
 IMAGE_SPINNER = "Creating your image. This usually takes 15 to 60 seconds..."
+
+# These content types stream their draft live in the Content tab instead of the chat.
+STREAM_IN_CONTENT_TAB = {"blog"}
 
 # Redraw the streamed draft at most this often (seconds); redrawing on every token is slow.
 STREAM_REFRESH = 0.15
-
-# Auto mode suggestions: content requests start an agent, the rest is general chat.
-SUGGESTIONS = {
-    ":violet[:material/work:] Draft a LinkedIn post": "Write a LinkedIn post about how AI agents are changing software development",
-    ":green[:material/article:] Write an SEO blog": "Write an SEO blog about how small businesses can use AI for content marketing",
-    ":blue[:material/travel_explore:] Research a topic": "Research the latest trends in AI content marketing",
-    ":orange[:material/image:] Generate an image": "Create an image of a team collaborating with AI agents in a modern office",
-    ":gray[:material/lightbulb:] Explain a concept": "Explain how large language models work in simple terms",
-    ":orange[:material/checklist:] Plan something": "Help me plan a productive work week",
-}
 
 DECISION_WORDS = {
     "approve": ["approve", "approved", "yes", "looks good", "lgtm"],
@@ -160,19 +148,20 @@ def render_question(message: dict, index: int, active: bool) -> tuple[dict, str]
 def render_draft(message: dict, active: bool) -> None:
     content_type = message.get("content_type", "chat")
     info = CONTENT_TYPES[content_type]
-    noun = "research report" if content_type == "research" else "draft"
+    noun = "research report and content strategy" if content_type == "research" else "draft"
     with st.container(horizontal=True, vertical_alignment="center"):
         st.markdown(f"**Here's your {noun}.** Please review it.")
         st.badge(info["label"], icon=info["icon"], color=info["color"])
 
-    with st.expander(noun.capitalize(), icon=":material/description:", expanded=active):
+    with st.expander(noun[0].upper() + noun[1:], icon=":material/description:", expanded=active):
         with st.container(height=DRAFT_HEIGHT, border=False):
             st.markdown(message["content"])
 
     if not active:
         return
 
-    st.caption(f"Approve, edit or reject the {noun}. It is also shown in the Content tab.")
+    shown = "Both are" if content_type == "research" else "It is"
+    st.caption(f"Approve, edit or reject the {noun}. {shown} also shown in the Content tab.")
     with st.container(horizontal=True):
         st.button("Approve", type="primary", icon=":material/verified:", key="chat_approve", on_click=decide, args=("approve",))
         st.button("Edit", icon=":material/edit:", key="chat_edit", on_click=start_edit)
@@ -210,6 +199,11 @@ def render_messages() -> tuple[dict, str] | None:
             elif message["kind"] == "answer":
                 with st.container(key=f"agent_answer_{index}"):
                     st.markdown(message["content"])
+            elif message["kind"] == "error":
+                st.error(message["content"], icon=":material/error:")
+                st.caption("Send a new message to try again.")
+            elif message["kind"] == "warning":
+                st.warning(message["content"], icon=":material/warning:")
             else:
                 st.markdown(message["content"])
 
@@ -293,13 +287,14 @@ class LiveProgress:
         self.status.update(label=label, state=state, expanded=False)
 
 
-def run_agent_step(label: str, step, spinner: str | None = None) -> bool:
-    """Run one workflow step with live progress in an assistant bubble. Returns True on success.
+def run_agent_step(label: str, step, spinner: str | None = None, container=None) -> bool:
+    """Run one workflow step with live progress. Returns True on success.
 
     step(on_step, on_event) runs the workflow and returns (payload, state, content_type).
+    Progress shows in an assistant bubble, or in `container` (the Content tab streams there).
     """
 
-    with st.chat_message("assistant"):
+    with container if container is not None else st.chat_message("assistant"):
         progress = LiveProgress(label)
         try:
             # Image generation streams no text, so a spinner shows it is still working.
@@ -312,13 +307,24 @@ def run_agent_step(label: str, step, spinner: str | None = None) -> bool:
             return False
         if is_image_review(payload):
             progress.finish("Image ready for review")
+        elif payload is None and image_failed(state):
+            progress.finish("Image generation failed", state="error")
         else:
             progress.finish("Draft ready for review" if is_review(payload) else "Done")
 
     if payload is None:
-        errors = state.get("errors") or ["The workflow finished without a draft."]
-        st.session_state.messages.append({"role": "assistant", "kind": "text", "content": errors[-1]})
+        if image_failed(state) or state.get("errors"):
+            st.session_state.messages.append({"role": "assistant", "kind": "error", "content": workflow_error(state)})
+        else:
+            st.session_state.messages.append(
+                {"role": "assistant", "kind": "text", "content": "The workflow finished without a draft."}
+            )
         return True
+
+    if is_review(payload) and state.get("errors"):
+        # A step failed but the workflow went on, e.g. the content strategist failed and the
+        # plain research report came back for review instead.
+        st.session_state.messages.append({"role": "assistant", "kind": "warning", "content": state["errors"][-1]})
 
     show_payload(payload, state, content_type)
     # Every draft is reviewed in the Content tab.
@@ -417,7 +423,12 @@ def handle_image_action(action: dict) -> None:
             st.error(str(error), icon=":material/error:")
             st.session_state.messages.pop()
             return
-        progress.finish("Image ready for review" if payload else "Done")
+        if payload:
+            progress.finish("Image ready for review")
+        elif image_failed(state):
+            progress.finish("Image generation failed", state="error")
+        else:
+            progress.finish("Done")
 
     finish_image_review(name, payload, state)
     st.rerun()
@@ -465,20 +476,60 @@ def handle_request(prompt: str, content_type: str) -> None:
     ):
         reset_conversation()
     st.session_state.conversation_type = content_type
+
+    if content_type in STREAM_IN_CONTENT_TAB:
+        # The draft streams live in the Content tab; the chat just points there.
+        label = CONTENT_TYPES[content_type]["label"]
+        st.session_state.messages += [
+            {"role": "user", "kind": "text", "content": prompt},
+            {
+                "role": "assistant",
+                "kind": "text",
+                "content": f"On it! I'm writing your {label}. Watch it stream live in the **Content** tab.",
+            },
+        ]
+        st.session_state["content_job"] = {"prompt": prompt, "content_type": content_type, "settings": get_settings()}
+        go_to("create")
+        st.rerun()
+
     add_bubble("user", prompt)
+    spinner = IMAGE_SPINNER if content_type == "image" else None
+    if run_agent_step("Analyzing your request...", request_step(prompt, content_type, get_settings()), spinner):
+        st.rerun()
+    else:
+        st.session_state.messages.pop()
+
+
+def request_step(prompt: str, content_type: str, settings: dict):
+    """Workflow step that starts a new content request."""
 
     def step(on_step, on_event):
         conversation_id, payload, state = start_agent(
-            get_current_user()["user_id"], content_type, prompt, get_settings(), on_step, on_event
+            get_current_user()["user_id"], content_type, prompt, settings, on_step, on_event
         )
         st.session_state.conversation_id = conversation_id
         return payload, state, content_type
 
-    spinner = IMAGE_SPINNER if content_type == "image" else None
-    if run_agent_step("Analyzing your request...", step, spinner):
+    return step
+
+
+def run_content_job(job: dict) -> None:
+    """Run a queued request in the Content tab so its draft streams there."""
+
+    label = CONTENT_TYPES[job["content_type"]]["label"]
+    st.markdown(f"#### :material/edit_note: Writing your {label}")
+    st.caption(f"Request: {job['prompt']}")
+    if run_agent_step(
+        "Analyzing your request...",
+        request_step(job["prompt"], job["content_type"], job["settings"]),
+        container=st.container(),
+    ):
         st.rerun()
-    else:
-        st.session_state.messages.pop()
+
+    # The error is shown above; note it in the chat too so the user can retry there.
+    st.session_state.messages.append(
+        {"role": "assistant", "kind": "error", "content": f"Could not write your {label}. Please try again."}
+    )
 
 
 def handle_general_chat(prompt: str) -> None:
@@ -511,26 +562,8 @@ def handle_general_chat(prompt: str) -> None:
 
 
 def render_greeting(agent_type: str | None) -> None:
-    name = get_current_user()["username"]
     with st.chat_message("assistant"):
-        if agent_type == "blog":
-            st.markdown(
-                f"Hello {name}! I'm your SEO blog writer. What topic should your blog cover? "
-                "I'll research it, find the right keywords and write the post for your review."
-            )
-            st.caption("Tip: set the tone, target audience and keywords in the sidebar.")
-        elif agent_type == "image":
-            st.markdown(
-                f"Hello {name}! I'm your image generator. Describe the image you want. "
-                "If you don't mention its purpose, style, orientation or quality, I'll ask you one question at a time, "
-                "then create it for your review."
-            )
-            st.caption("You can approve it, edit the prompt, regenerate it or reject it, and download it once approved.")
-        elif agent_type:
-            label = CONTENT_TYPES[agent_type]["label"]
-            st.markdown(f"Hello {name}! I'm your {label} agent. What would you like to create?")
-        else:
-            st.markdown(f"Hello {name}! How can I help you today?")
+        st.markdown(agent_intro(agent_type or "auto", get_current_user()["username"]))
 
 
 def render_chat() -> None:
@@ -538,22 +571,13 @@ def render_chat() -> None:
     # "auto" has no fixed agent: requests are routed by keywords, everything else is general chat.
     agent_type = None if content_type == "auto" else content_type
 
-    info = CONTENT_TYPES[content_type]
-    with st.container(horizontal=True, vertical_alignment="center"):
-        if agent_type:
-            st.subheader(f"{info['icon']} {AGENT_TITLES.get(agent_type, info['label'])}", anchor=False)
-            st.badge(info["label"], icon=info["icon"], color=info["color"])
-        else:
-            st.subheader(":material/forum: Chat", anchor=False)
-            st.badge(info["label"], icon=info["icon"], color=info["color"])
-
     if agent_type:
         st.caption("Describe what you need. The agent may ask a few questions, then drafts your content for review.")
     else:
-        st.markdown(
-            ":primary-background[:material/left_panel_open: Choose a content type in the sidebar to work with a content agent.]"
+        st.caption(
+            ":material/left_panel_open: Pick a content type in the sidebar to meet its agent. "
+            "Or just ask. In Auto mode, content requests go to the right agent automatically."
         )
-        st.caption("Or just ask. In Auto mode, content requests go to the right agent automatically.")
 
     if not st.session_state.messages:
         render_greeting(agent_type)
@@ -569,15 +593,6 @@ def render_chat() -> None:
         )
 
     prompt = st.chat_input(chat_placeholder(agent_type), submit_mode="disable", disabled=closed)
-
-    # Suggestions only in Auto mode; a picked agent gets a greeting instead.
-    if not st.session_state.messages and not agent_type:
-        slot = st.empty()
-        selected = slot.pills("Try asking", list(SUGGESTIONS), label_visibility="collapsed")
-        if selected:
-            prompt = SUGGESTIONS[selected]
-        if prompt:
-            slot.empty()
 
     pending = st.session_state.pending
 

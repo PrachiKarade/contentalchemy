@@ -46,6 +46,7 @@ class ContentState(TypedDict, total=False):
     research_results: list[ResearchResult] # the results of the research conducted
     research_summary: str                  # the summary of the research findings
     research_data: dict
+    research_report: str    
 
     # SEO Blog output
     blog_data: dict
@@ -85,7 +86,7 @@ class ContentState(TypedDict, total=False):
     image_style: Literal["vivid", "natural"]
 
     # Image generation tracking
-    image_status: Literal[ "pending", "generated",  "approved", "rejected"]
+    image_status: Literal[ "pending", "generated",  "approved", "rejected","failed"]
     image_review_action: Literal[  "approve", "edit", "regenerate", "reject"]
     image_error: str
     image_preference_error: str    # why the last preference answer was not accepted
@@ -99,7 +100,7 @@ class ContentState(TypedDict, total=False):
     generated_content_message_id: str
 
     # Shared human interaction
-    human_interaction: HumanInteraction # the interaction with the human user, including the type of interaction, the agent that initiated it, the question or prompt presented, the options provided, the content related to the interaction, the status of the interaction, the response provided by the human user, feedback about the interaction, and whether it has been approved
+    human_interaction: HumanInteraction | None # the interaction with the human user, including the type of interaction, the agent that initiated it, the question or prompt presented, the options provided, the content related to the interaction, the status of the interaction, the response provided by the human user, feedback about the interaction, and whether it has been approved
     #human_feedback: str                 # feedback provided by the human user regarding the generated content
     
     approval_status: Literal[ "pending", "edited", "approved", "rejected"] # pending review, edited (goes back to review), approved or rejected
