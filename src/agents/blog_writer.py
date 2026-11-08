@@ -10,11 +10,12 @@ from langgraph.config import get_stream_writer
 
 from src.core.logger import setup_logger
 from src.core.state import ContentState
-from src.integrations.openai_client import stream_text
+from src.integrations.text_provider_manager import text_provider_manager
 from src.prompts.seo_blog_writer_agent_prompt import get_seo_blog_article_prompt, get_seo_blog_system_prompt
 from src.tools.blog_writer_tools import blog_writer_tools
 from src.repositories.conversation_repository import get_conversation
 from src.repositories.message_repository import add_message
+from src.integrations.openai_client import generate_text
 
 
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -464,7 +465,7 @@ Blog objective: {objective or "Inform and educate readers"}
 Write the complete article now.
 """
 
-    yield from stream_text(
+    yield from text_provider_manager.stream_text(
         query = query,
         system_prompt = SEO_BLOG_ARTICLE_PROMPT,
         max_output_tokens = 4000,

@@ -4,6 +4,7 @@
 import streamlit as st
 
 from src.web_app.assistant import CONTENT_TYPES
+from src.web_app.components.chat import run_content_job
 from src.web_app.components.image_view import render_download, render_image, render_image_actions
 from src.web_app.components.research_view import render_research
 from src.web_app.components.state import (
@@ -19,7 +20,7 @@ from src.web_app.components.theme import DRAFT_HEIGHT
 
 # Shown above a fresh draft to ask for the user's review.
 READY_TITLES = {
-    "research": "Your research report is ready",
+    "research": "Your research report and content strategy are ready",
     "blog": "Your SEO blog is ready",
     "linkedin": "Your LinkedIn post is ready",
     "image": "Your image is ready",
@@ -91,7 +92,6 @@ def render_pending(review: dict) -> None:
 
 def render_final(review: dict) -> None:
     if review["status"] == "approved":
-        st.success("Approved. Your final content is ready to download.", icon=":material/verified:")
         content = review["final_content"] or review["content"]
     else:
         st.warning("This draft was rejected.", icon=":material/block:")
@@ -132,9 +132,7 @@ def render_image_review(review: dict) -> None:
             render_image_actions("review", can_regenerate=not pending.get("checkpoint_lost"))
         return
 
-    if review["status"] == "approved":
-        st.success("Approved. Your image is ready to download.", icon=":material/verified:")
-    else:
+    if review["status"] != "approved":
         st.warning("This image was rejected.", icon=":material/block:")
     path = review["final_content"] or review["content"]
     data = render_image(path, review.get("image_prompt", ""))
@@ -146,7 +144,11 @@ def render_image_review(review: dict) -> None:
 
 
 def render_content() -> None:
-    st.subheader(":material/description: Content", anchor=False)
+    # A request queued by the chat (SEO blog) runs here so its draft streams live on this page.
+    job = st.session_state.pop("content_job", None)
+    if job:
+        run_content_job(job)
+        return
 
     review = st.session_state.get("review")
     if not review:

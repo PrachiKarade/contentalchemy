@@ -8,11 +8,6 @@ from urllib.parse import urlparse
 load_dotenv()
 logger = setup_logger("Google search agent using SerpApi")
 
-print("=" * 90)
-print("Google search agent using SerpApi")
-print("=" * 90)
-
-
 
 def is_valid_source_url(url: str) -> bool:
     if not url:

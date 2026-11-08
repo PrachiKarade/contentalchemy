@@ -4,6 +4,7 @@ from langchain_core.messages import AIMessage
 from src.core.logger import setup_logger
 from src.core.state import ContentState
 from src.integrations.openai_client import generate_text
+from src.integrations.text_provider_manager import text_provider_manager
 from src.repositories.message_repository import add_message
 
 logger = setup_logger("content_writer")
@@ -57,7 +58,7 @@ def content_writer_node(state: ContentState) -> dict:
 
     logger.info("Generating %s draft for topic: %s", intent, topic)
 
-    draft = generate_text(
+    draft = text_provider_manager.generate_text(
         query = f"TOPIC: {topic.strip()}\n\nREQUEST: {state.get('user_request', topic).strip()}",
         system_prompt = "\n".join(parts),
     )

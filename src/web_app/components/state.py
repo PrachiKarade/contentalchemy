@@ -2,8 +2,9 @@
 """Session state shared by all pages.
 
 messages      chat bubbles: {"role", "kind", "content", ...} where kind is "text",
-              "question" (agent question with options), "answer", "draft" or "image"
-              (a generated image)
+              "question" (agent question with options), "answer", "draft", "image"
+              (a generated image), "error" (the workflow failed) or "warning"
+              (a step failed but the workflow went on)
 conversation  the active conversation id and type ("chat" or a content type)
 pending       the interrupt payload the workflow is paused on, if any
 review        the draft (or image) shown in the Content tab and its review status
@@ -17,11 +18,14 @@ import streamlit as st
 from src.core.logger import setup_logger
 from src.web_app.assistant import (
     REVIEW_LABELS,
+    agent_intro,
     get_current_user,
     get_pending_payload,
+    image_failed,
     load_conversation,
     submit_decision,
     ui_type,
+    workflow_error,
 )
 
 logger = setup_logger("web_state")
@@ -43,7 +47,7 @@ CONVERSATION_KEYS = [
 ]
 
 # Sidebar values for a new conversation: Auto content type and empty brand voice.
-SIDEBAR_DEFAULTS = {"content_type": "auto", "tone": None, "audience": "", "keywords": ""}
+SIDEBAR_DEFAULTS = {"content_type": "auto", "tone": None, "audience": None, "audience_custom": "", "keywords": ""}
 
 # Conversation status in MongoDB -> review status in the Content tab.
 REVIEW_STATUSES = {
@@ -99,6 +103,14 @@ def change_content_type() -> None:
     content_type = st.session_state.get("content_type")
     if content_type != "auto" and st.session_state.get("conversation_type") not in (None, content_type):
         reset_conversation()
+
+    # The picked agent introduces itself in the chat. Skip it while the workflow waits for an
+    # answer or review, so the agent's open question stays the latest message.
+    if st.session_state.get("pending") is None:
+        name = get_current_user()["username"]
+        st.session_state["messages"].append(
+            {"role": "assistant", "kind": "text", "content": agent_intro(content_type, name)}
+        )
     go_to("chat")
 
 
@@ -262,6 +274,14 @@ def finish_image_review(action: str, payload: dict | None, state: dict) -> None:
         show_payload(payload, state, "image")
         return
 
+    if image_failed(state):
+        # The provider could not make a new image and the workflow has ended.
+        st.session_state["pending"] = None
+        st.session_state["review"] = None
+        st.session_state["messages"].append({"role": "assistant", "kind": "error", "content": workflow_error(state)})
+        st.toast("Image generation failed", icon=":material/error:")
+        return
+
     if state.get("image_status") == "rejected":
         reset_session()
         st.toast("Image rejected. Starting a new conversation.", icon=":material/delete:")
@@ -333,6 +353,8 @@ def messages_from_history(messages: list[dict]) -> list[dict]:
             )
         elif message_type == "answer":
             bubbles.append({"role": "user", "kind": "answer", "content": message["content"]})
+        elif message_type == "error":
+            bubbles.append({"role": "assistant", "kind": "error", "content": message["content"]})
         elif message_type == "final_content":
             text = (
                 "Approved! Download your image above."

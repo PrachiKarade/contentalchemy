@@ -7,6 +7,11 @@ agent's profile questions, the image generator's preference questions,
 content_review's approve / edit / reject decision and image_review's
 approve / edit / regenerate / reject decision. The chat answers those
 interrupts by resuming the thread.
+
+Research runs research_agent -> content_strategist -> content_review, so the
+research draft is a research report followed by a content strategy. If the
+image provider fails, the workflow ends with image_status "failed" instead of
+pausing for image review; the conversation is then marked failed.
 """
 
 import os
@@ -71,6 +76,38 @@ CONTENT_TYPES = {
     },
 }
 
+# What each agent says when the user picks its content type. {name} is the user's name.
+AGENT_INTROS = {
+    "auto": (
+        "Hi {name}! I'm your **ContentAlchemy assistant**. Ask me anything, or describe what you need: "
+        "a LinkedIn post, an SEO blog, a research report or an image. I'll hand it to the right agent automatically."
+    ),
+    "research": (
+        "Hi {name}! I'm your **Research agent**. Give me a topic and I'll search the web for the latest data, "
+        "trends and sources, then write a research report with a content strategy for your review.\n\n"
+        "*Try: \"Research AI adoption trends in B2B marketing\"*"
+    ),
+    "blog": (
+        "Hi {name}! I'm your **SEO blog writer**. Tell me the topic and I'll research it, pick the right keywords "
+        "and write a long-form, search-optimized article for your review.\n\n"
+        "*Tip: set the tone, audience and keywords under Brand voice for a sharper draft.*"
+    ),
+    "linkedin": (
+        "Hi {name}! I'm your **LinkedIn agent**. Tell me what you want to post about. I'll ask a few quick questions "
+        "about you and your goals, then write an engaging post with hashtags for your review."
+    ),
+    "image": (
+        "Hi {name}! I'm your **Image generator**. Describe the image you want. If you don't mention its purpose, "
+        "style, orientation or quality, I'll ask one question at a time, then create it for your review. "
+        "You can approve, edit the prompt, regenerate or reject it, and download it once approved."
+    ),
+}
+
+
+def agent_intro(content_type: str, name: str) -> str:
+    return AGENT_INTROS.get(content_type, AGENT_INTROS["auto"]).format(name=name)
+
+
 # The repositories call the blog type "seo_blog"; the UI and workflow call it "blog".
 REPO_TYPES = {"blog": "seo_blog"}
 UI_TYPES = {repo: ui for ui, repo in REPO_TYPES.items()}
@@ -82,6 +119,7 @@ STEP_LABELS = {
     "linkedin_writer": "Wrote the LinkedIn draft",
     "content_writer": "Wrote the draft",
     "research_agent": "Researched the topic",
+    "content_strategist": "Wrote the research report and content strategy",
     "seo_blog_writer": "Wrote the SEO blog",
     "image_request_analyzer": "Read your image request",
     "image_preference_interaction": "Saved your answer",
@@ -302,6 +340,36 @@ def run_workflow(
     return payload, get_workflow().get_state(config).values
 
 
+def image_failed(state: dict) -> bool:
+    """The image generator ended the workflow because the image provider failed."""
+
+    return state.get("image_status") == "failed"
+
+
+def workflow_error(state: dict) -> str:
+    return state.get("image_error") or (state.get("errors") or ["The workflow stopped unexpectedly."])[-1]
+
+
+def record_failure(user_id: str, conversation_id: str, content_type: str, state: dict) -> None:
+    """Save why the workflow ended without a result and mark the conversation failed."""
+
+    error = workflow_error(state)
+    try:
+        add_message(
+            conversation_id,
+            user_id,
+            "assistant",
+            "error",
+            repo_type(content_type),
+            error,
+            agent_name=state.get("current_agent"),
+        )
+        update_conversation(conversation_id, user_id, status="failed", metadata_updates={"error": error})
+    except Exception:
+        logger.exception("Could not record the failure of %s", conversation_id)
+    refresh_history()
+
+
 def record_pause(user_id: str, conversation_id: str, content_type: str, payload: dict | None) -> None:
     """Save the agent's question, or mark the conversation as awaiting approval."""
 
@@ -369,6 +437,8 @@ def start_agent(
         refresh_history()
         raise
 
+    if payload is None and image_failed(state):
+        record_failure(user_id, conversation_id, content_type, state)
     record_pause(user_id, conversation_id, content_type, payload)
     return conversation_id, payload, state
 
@@ -386,6 +456,8 @@ def answer_question(
 
     add_message(conversation_id, user_id, "user", "answer", repo_type(content_type), answer_text)
     payload, state = run_workflow(conversation_id, Command(resume=response), on_step, on_event)
+    if payload is None and image_failed(state):
+        record_failure(user_id, conversation_id, content_type, state)
     record_pause(user_id, conversation_id, content_type, payload)
     return payload, state
 
@@ -521,6 +593,11 @@ def submit_image_decision(
     if payload is not None:
         record_pause(user_id, conversation_id, "image", payload)
         return payload, state
+
+    if image_failed(state):
+        # Edit / regenerate could not create a new image; the workflow has ended.
+        record_failure(user_id, conversation_id, "image", state)
+        return None, state
 
     status = state.get("image_status")
     if status == "approved":

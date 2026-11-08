@@ -1,7 +1,11 @@
 
-"""Sidebar with the user, new conversation, content type, brand voice and history."""
+"""Sidebar with the user, new conversation, content type, brand voice and history.
 
-from datetime import datetime, timezone
+Content type, tone and audience are small option buttons (pills) so every choice is visible.
+Picking a content type makes its agent introduce itself in the chat (see state.change_content_type).
+"""
+
+from datetime import date, datetime, timezone
 
 import streamlit as st
 
@@ -13,9 +17,12 @@ CREATE_TYPES = ["auto", "linkedin", "blog", "research", "image"]
 
 TONES = ["Professional", "Friendly", "Bold", "Witty", "Inspirational"]
 
+OTHER_AUDIENCE = "Other"
+AUDIENCES = ["Marketers", "SaaS founders", "Small businesses", "Developers", "Executives", "Students", OTHER_AUDIENCE]
+
 CONTENT_TYPE_CAPTIONS = {
     "auto": "Picks the right agent from your message",
-    "research": "In-depth brief with key findings",
+    "research": "Research report with a content strategy",
     "blog": "Long-form, search-optimized article",
     "linkedin": "Engaging post with hashtags",
     "image": "AI-generated image you can review and download",
@@ -23,20 +30,21 @@ CONTENT_TYPE_CAPTIONS = {
 
 HISTORY_TITLE_LENGTH = 34
 
-SIDEBAR_KEYS = ["content_type", "tone", "audience", "keywords"]
+# The history list keeps this height (px) and scrolls, so the sidebar never grows.
+HISTORY_HEIGHT = 260
+
+SIDEBAR_KEYS = ["content_type", "tone", "audience", "audience_custom", "keywords", "history_date"]
 
 
-def history_group(updated_at: datetime, now: datetime) -> str:
-    days = (now.date() - updated_at.date()).days
-    if days <= 0:
-        return "Today"
-    if days == 1:
-        return "Yesterday"
-    if days < 7:
-        return "Previous 7 days"
-    if days < 30:
-        return "Previous 30 days"
-    return "Older"
+def date_label(day: date, today: date, count: int) -> str:
+    days = (today - day).days
+    if days == 0:
+        name = "Today"
+    elif days == 1:
+        name = "Yesterday"
+    else:
+        name = day.strftime("%a, %b %d, %Y")
+    return f"{name} ({count})"
 
 
 def render_user(username: str) -> None:
@@ -55,22 +63,31 @@ def render_user(username: str) -> None:
 def render_history(user_id: str) -> None:
     st.markdown(":material/history: **History**")
     conversations = list_history(user_id)
-    if not conversations:
-        st.caption("Your conversations will appear here.")
-        return
 
     # MongoDB returns naive UTC datetimes.
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    today = datetime.now(timezone.utc).date()
+    by_day: dict[str, list[dict]] = {today.isoformat(): []}
+    for conversation in conversations:
+        day = conversation["updated_at"].replace(tzinfo=None).date().isoformat()
+        by_day.setdefault(day, []).append(conversation)
+    days = [today.isoformat()] + sorted((day for day in by_day if day != today.isoformat()), reverse=True)
+
+    # Today is selected by default; a stale pick (e.g. after midnight) falls back to it.
+    if st.session_state.get("history_date") not in days:
+        st.session_state["history_date"] = days[0]
+    selected = st.selectbox(
+        "History date",
+        days,
+        format_func=lambda day: date_label(date.fromisoformat(day), today, len(by_day[day])),
+        key="history_date",
+        label_visibility="collapsed",
+    )
+
     active_id = st.session_state.get("conversation_id")
-    group = None
-
-    with st.container(gap="xxsmall", key="history_list"):
-        for conversation in conversations:
-            updated_at = conversation["updated_at"].replace(tzinfo=None)
-            if history_group(updated_at, now) != group:
-                group = history_group(updated_at, now)
-                st.caption(group)
-
+    with st.container(height=HISTORY_HEIGHT, gap="xxsmall", border=False, key="history_list"):
+        if not by_day[selected]:
+            st.caption("No conversations on this day yet." if conversations else "Your conversations will appear here.")
+        for conversation in by_day[selected]:
             info = CONTENT_TYPES.get(ui_type(conversation["content_type"]), CONTENT_TYPES["chat"])
             title = conversation["title"]
             if len(title) > HISTORY_TITLE_LENGTH:
@@ -89,6 +106,101 @@ def render_history(user_id: str) -> None:
             )
 
 
+def render_hint(key: str, message: str) -> None:
+    """Small blinking alert that nudges the user toward a sidebar setting."""
+
+    with st.container(key=key):
+        st.markdown(f":material/tips_and_updates: {message}")
+
+
+def section_label(text: str) -> None:
+    st.html(f'<div class="ca-section-label"><p>{text}</p></div>')
+
+
+def field_label(text: str) -> None:
+    st.html(f'<div class="ca-field-label"><p>{text}</p></div>')
+
+
+def audience_value() -> str:
+    audience = st.session_state.get("audience")
+    if audience == OTHER_AUDIENCE:
+        return (st.session_state.get("audience_custom") or "").strip()
+    return audience or ""
+
+
+def brand_voice_empty(content_type: str) -> bool:
+    tone_set = content_type != "linkedin" and st.session_state.get("tone")
+    keywords = (st.session_state.get("keywords") or "").strip()
+    return not (tone_set or audience_value() or keywords)
+
+
+def normalize_sidebar_state() -> None:
+    """Saved conversations may hold values the option buttons don't offer."""
+
+    if st.session_state.get("content_type") not in CREATE_TYPES:
+        st.session_state["content_type"] = "auto"
+
+    if st.session_state.get("tone") not in TONES:
+        st.session_state.pop("tone", None)
+
+    audience = st.session_state.get("audience")
+    if audience and audience not in AUDIENCES:
+        # A free-text audience (from history) goes into the "Other" field.
+        st.session_state["audience_custom"] = audience
+        st.session_state["audience"] = OTHER_AUDIENCE
+    elif not audience:
+        st.session_state["audience"] = None
+
+
+def render_content_type() -> str:
+    with st.container(border=True, key="content_type_box"):
+        section_label("Content type")
+        if st.session_state.get("content_type", "auto") == "auto":
+            render_hint("content_type_hint", "Pick a content type to meet its agent")
+        content_type = st.pills(
+            "Content type",
+            CREATE_TYPES,
+            format_func=lambda key: f"{CONTENT_TYPES[key]['icon']} {CONTENT_TYPES[key]['label']}",
+            required=True,
+            key="content_type",
+            on_change=change_content_type,
+            label_visibility="collapsed",
+        )
+        st.caption(CONTENT_TYPE_CAPTIONS[content_type])
+    return content_type
+
+
+def render_brand_voice(content_type: str) -> None:
+    with st.container(border=True, key="brand_voice"):
+        section_label("Brand voice")
+        if brand_voice_empty(content_type):
+            render_hint("brand_voice_hint", "Set your brand voice so content sounds like you")
+
+        # LinkedIn posts take their tone from the user profile.
+        if content_type != "linkedin":
+            field_label("Tone")
+            st.pills("Tone", TONES, key="tone", label_visibility="collapsed")
+
+        field_label("Target audience")
+        audience = st.pills("Target audience", AUDIENCES, key="audience", label_visibility="collapsed")
+        if audience == OTHER_AUDIENCE:
+            st.text_input(
+                "Custom audience",
+                placeholder="e.g. HR leaders in fintech",
+                key="audience_custom",
+                label_visibility="collapsed",
+            )
+
+        field_label("Target keywords")
+        st.text_input(
+            "Target keywords",
+            placeholder="e.g. AI marketing, automation",
+            key="keywords",
+            label_visibility="collapsed",
+        )
+        st.caption("All optional. Leave blank to let the assistant decide.")
+
+
 def render_sidebar() -> None:
     user = get_current_user()
 
@@ -96,9 +208,7 @@ def render_sidebar() -> None:
     for key, value in st.session_state.pop("sidebar_values", {}).items():
         st.session_state[key] = value
 
-    # Saved conversations may use a tone that is not offered here.
-    if st.session_state.get("tone") not in TONES:
-        st.session_state.pop("tone", None)
+    normalize_sidebar_state()
 
     # Streamlit drops widget values when the page changes; re-store them so they persist.
     for key in SIDEBAR_KEYS:
@@ -107,25 +217,8 @@ def render_sidebar() -> None:
 
     with st.sidebar:
         render_user(user["username"])
-
-        content_type = st.selectbox(
-            "Content type",
-            CREATE_TYPES,
-            format_func=lambda key: CONTENT_TYPES[key]["label"],
-            key="content_type",
-            on_change=change_content_type,
-        )
-        st.caption(CONTENT_TYPE_CAPTIONS[content_type])
-
-        with st.container(border=True, key="brand_voice"):
-            st.markdown(":material/record_voice_over: **Brand voice**")
-            st.caption("Optional. Leave blank to let the assistant decide.")
-            # LinkedIn posts take their tone from the user profile.
-            if content_type != "linkedin":
-                st.selectbox("Tone", TONES, index=None, placeholder="Choose a tone", key="tone")
-            st.text_input("Target audience", placeholder="e.g. SaaS founders", key="audience")
-            st.text_input("Target keywords", placeholder="e.g. AI marketing, automation", key="keywords")
-
+        content_type = render_content_type()
+        render_brand_voice(content_type)
         render_history(user["user_id"])
 
 
@@ -133,9 +226,8 @@ def get_settings() -> dict:
     """Read the sidebar values from session state."""
 
     return {
-        "content_type": st.session_state.get("content_type", "auto"),
+        "content_type": st.session_state.get("content_type") or "auto",
         "tone": st.session_state.get("tone"),
-        "audience": st.session_state.get("audience", "").strip(),
-        "keywords": st.session_state.get("keywords", "").strip(),
+        "audience": audience_value(),
+        "keywords": (st.session_state.get("keywords") or "").strip(),
     }
-

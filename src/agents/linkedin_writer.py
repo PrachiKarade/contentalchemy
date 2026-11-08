@@ -4,7 +4,7 @@ import re
 from typing import TypedDict
 
 from src.core.logger import setup_logger
-from src.integrations.openai_client import generate_text
+from src.integrations.text_provider_manager import text_provider_manager
 from src.core.state import ContentState
 from langchain_core.messages import AIMessage
 from src.repositories.conversation_repository import get_conversation
@@ -29,6 +29,9 @@ def write_linkedin_post(
     tone: str = "Professional",
     keywords: list[str] | None = None,
     objective: str = "",
+    research_report: str = "",
+    content_strategy: str = "",
+    brand_voice_context: str = "",
 ) -> LinkedInDraft:
     """
     Generate a structured LinkedIn post using the user's profile
@@ -55,10 +58,17 @@ def write_linkedin_post(
                 TARGET AUDIENCE: {target_audience or "Infer the most relevant professional audience"}
 
                 PREFERRED TONE: {tone}
+                
+                BRAND VOICE CONTEXT: {brand_voice_context or "No specific brand voice context provided"}
 
                 CONTENT OBJECTIVE: {objective or "Provide value and encourage meaningful engagement"}
 
                 TARGET KEYWORDS:{", ".join(keywords) if keywords else "Use relevant keywords naturally"}
+
+                RESEARCH REPORT: {research_report or "No research report provided"}
+                
+                CONTENT STRATEGY: {content_strategy or "No specific content strategy provided"}                
+
                 Create content that:
                 1. Reflects the user's professional identity and experience.
                 2. Aligns with their LinkedIn objective.
@@ -72,7 +82,7 @@ def write_linkedin_post(
 
     logger.info("Generating LinkedIn draft for topic: %s", topic)
 
-    raw_output = generate_text(
+    raw_output = text_provider_manager.generate_text(
         query = user_prompt,
         system_prompt = system_prompt,
         max_output_tokens =1600,

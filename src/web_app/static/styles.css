@@ -1,16 +1,6 @@
-/* ContentAlchemy styles. Colors come from the --ca-* variables set by components/theme.py. */
+/* ContentAlchemy styles: AI purple on soft violet, dark navy sidebar. Colors come from --ca-* in components/theme.py. */
 
-/* Theme picker pinned to the top-right corner, left of the main menu */
-.st-key-theme_picker {
-    position: fixed;
-    top: 0.6rem;
-    right: 3.5rem;
-    left: auto;
-    width: fit-content !important;
-    z-index: 999991;
-}
-
-/* App background */
+/* ---------- Page ---------- */
 [data-testid="stApp"] {
     background: var(--ca-bg);
     background-attachment: fixed;
@@ -21,53 +11,16 @@
     background: transparent;
 }
 
-/* Frosted top bar so scrolled content doesn't show through the navigation */
 [data-testid="stHeader"] {
-    background: var(--ca-sidebar);
-    backdrop-filter: blur(14px);
+    background: rgba(246, 243, 255, 0.85);
+    backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--ca-border);
 }
 
-/* Bordered containers and dividers */
-.st-key-brand_voice,
-[class*="st-key-preview_"] {
-    background: var(--ca-surface);
-    border-color: var(--ca-border) !important;
-}
-
-/* Draft and final content windows: compact headings and body text */
-[class*="st-key-preview_"] :is(p, li) {
-    font-size: 0.9rem !important;
-    line-height: 1.6;
-}
-
-[class*="st-key-preview_"] h1 {
-    font-size: 1.45rem !important;
-}
-
-[class*="st-key-preview_"] h2 {
-    font-size: 1.15rem !important;
-    padding-top: 0.75rem !important;
-}
-
-[class*="st-key-preview_"] h3 {
-    font-size: 1rem !important;
-}
-
-[class*="st-key-preview_"] :is(h1, h2, h3) {
-    font-weight: 600 !important;
-}
-
-[data-testid="stApp"] hr {
-    border-color: var(--ca-border);
-    background-color: var(--ca-border);
-}
-
-/* Sidebar: frosted glass, no visible scrollbar */
+/* ---------- Sidebar: dark navy ---------- */
 [data-testid="stSidebar"] {
-    background: var(--ca-sidebar);
-    backdrop-filter: blur(14px);
-    border-right: 1px solid var(--ca-border);
+    background: var(--ca-nav);
+    border-right: 1px solid var(--ca-nav-border);
 }
 
 [data-testid="stSidebar"] > div,
@@ -86,9 +39,187 @@
     display: none;
 }
 
-/* Sidebar history: left-aligned, single-line conversation titles */
+[data-testid="stSidebar"] :is(p, label, input, span) {
+    font-size: 0.8rem;
+}
+
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {
+    font-size: 0.72rem;
+    color: var(--ca-nav-muted);
+}
+
+/* New conversation button on navy */
+.st-key-new_conversation button {
+    background: linear-gradient(90deg, #8B5CF6, #A78BFA) !important;
+    border: none !important;
+    color: #FFFFFF !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.st-key-new_conversation button * {
+    color: #FFFFFF !important;
+}
+
+.st-key-new_conversation button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(139, 92, 246, 0.45);
+}
+
+/* ---------- Sidebar cards: light, dark labels ---------- */
+.st-key-content_type_box,
+.st-key-brand_voice {
+    background: var(--ca-card);
+    border: 1px solid transparent !important;
+    transition: box-shadow 0.2s ease;
+}
+
+.st-key-content_type_box:hover,
+.st-key-brand_voice:hover {
+    box-shadow: 0 0 0 1px var(--ca-accent-2), 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+.st-key-content_type_box :is(p, span, label),
+.st-key-brand_voice :is(p, span, label) {
+    color: var(--ca-text);
+}
+
+.st-key-content_type_box [data-testid="stCaptionContainer"] p,
+.st-key-brand_voice [data-testid="stCaptionContainer"] p {
+    color: var(--ca-muted) !important;
+}
+
+/* Section titles and field labels */
+.ca-section-label p {
+    font-size: 0.8rem !important;
+    font-weight: 700 !important;
+    color: var(--ca-text) !important;
+    margin: 0 !important;
+}
+
+.ca-field-label p {
+    font-size: 0.72rem !important;
+    font-weight: 600 !important;
+    color: var(--ca-text) !important;
+    margin: 0.15rem 0 0 0 !important;
+}
+
+/* Text inputs inside the light cards */
+.st-key-content_type_box [data-testid="stTextInputRootElement"],
+.st-key-brand_voice [data-testid="stTextInputRootElement"],
+.st-key-brand_voice [data-testid="stTextInputRootElement"] > div {
+    background: #FFFFFF !important;
+    border-color: var(--ca-border) !important;
+}
+
+.st-key-brand_voice input {
+    color: var(--ca-text) !important;
+    -webkit-text-fill-color: var(--ca-text);
+    background: transparent !important;
+}
+
+.st-key-brand_voice input::placeholder {
+    color: #9A97B8 !important;
+    -webkit-text-fill-color: #9A97B8;
+}
+
+/* Small option buttons (pills) with hover lift */
+[data-testid="stButtonGroup"] button {
+    min-height: 1.7rem;
+    padding: 0.15rem 0.6rem;
+    background: #FFFFFF !important;
+    border: 1px solid var(--ca-border) !important;
+    color: var(--ca-text) !important;
+    transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+[data-testid="stButtonGroup"] button * {
+    color: var(--ca-text) !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stButtonGroup"] button p {
+    font-size: 0.74rem !important;
+    font-weight: 500;
+}
+
+[data-testid="stButtonGroup"] button:hover {
+    transform: translateY(-1px);
+    border-color: var(--ca-accent-2) !important;
+    background: var(--ca-accent-soft) !important;
+    box-shadow: 0 3px 8px var(--ca-glow);
+}
+
+[data-testid="stButtonGroup"] button:hover * {
+    color: var(--ca-accent) !important;
+}
+
+[data-testid="stButtonGroup"] button[data-selected="true"] {
+    background: linear-gradient(90deg, #8B5CF6, #A78BFA) !important;
+    border-color: #8B5CF6 !important;
+}
+
+[data-testid="stButtonGroup"] button[data-selected="true"] * {
+    color: #FFFFFF !important;
+}
+
+/* ---------- Blinking nudges (plain text, wraps inside the card) ---------- */
+.st-key-content_type_hint,
+.st-key-brand_voice_hint {
+    width: 100% !important;
+    max-width: 100%;
+    animation: ca-hint-blink 1.4s ease-in-out infinite;
+}
+
+.st-key-content_type_hint p,
+.st-key-brand_voice_hint p {
+    font-size: 0.72rem !important;
+    font-weight: 600;
+    color: var(--ca-accent) !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    margin: 0;
+}
+
+.st-key-content_type_hint p span,
+.st-key-brand_voice_hint p span {
+    color: var(--ca-accent) !important;
+}
+
+.st-key-content_type_box:has(.st-key-content_type_hint),
+.st-key-brand_voice:has(.st-key-brand_voice_hint) {
+    animation: ca-hint-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes ca-hint-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+@keyframes ca-hint-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
+    50% { box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.45); }
+}
+
+/* ---------- History: fixed-height list with a thin scrollbar ---------- */
+.st-key-history_list {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ca-nav-border) transparent;
+}
+
+.st-key-history_list::-webkit-scrollbar { width: 6px; }
+.st-key-history_list::-webkit-scrollbar-thumb { background: var(--ca-nav-border); border-radius: 3px; }
+
 .st-key-history_list button {
     justify-content: flex-start;
+    border: 1px solid transparent !important;
+    transition: background-color 0.15s ease;
+}
+
+.st-key-history_list button:hover {
+    background: var(--ca-nav-hover) !important;
+}
+
+.st-key-history_list button:hover * {
+    color: #FFFFFF !important;
 }
 
 .st-key-history_list button p {
@@ -96,52 +227,137 @@
     overflow: hidden;
     text-overflow: ellipsis;
     text-align: left;
+    font-size: 0.78rem !important;
 }
 
-/* Agent questions, their options and the user's answers use a smaller font */
-[class*="st-key-agent_question_"] :is(p, button, input),
-[class*="st-key-agent_answer_"] p {
-    font-size: 0.875rem;
+.st-key-history_list button[data-testid="stBaseButton-secondary"] {
+    background: var(--ca-nav-hover) !important;
+    border-color: rgba(139, 92, 246, 0.4) !important;
 }
 
-/* Draft headings (every content type): no dark hover background, text keeps its color */
-[data-testid="stExpander"] summary:hover,
-[data-testid="stExpander"] summary:focus-visible,
-[data-testid="stExpander"] summary:hover *,
-[data-testid="stExpander"] summary:focus-visible * {
-    background: transparent !important;
-    color: inherit !important;
+/* ---------- Main-area buttons ---------- */
+[data-testid="stMain"] button[data-testid="stBaseButton-secondary"] {
+    background: #FFFFFF;
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
 }
 
-/* Chat avatars: smaller, soft palette tints instead of solid dark circles */
-[data-testid="stChatMessageAvatarAssistant"],
-[data-testid="stChatMessageAvatarUser"] {
-    width: 1.75rem;
-    height: 1.75rem;
-    min-width: 1.75rem;
-    border-radius: 50%;
-    border: 1px solid var(--ca-border);
+[data-testid="stMain"] button[data-testid="stBaseButton-secondary"]:hover {
+    border-color: var(--ca-accent-2) !important;
+    color: var(--ca-accent) !important;
+    background: var(--ca-accent-soft) !important;
 }
 
-[data-testid="stChatMessageAvatarAssistant"] {
-    background: color-mix(in srgb, var(--ca-accent) 14%, transparent) !important;
+button[data-testid="stBaseButton-primary"] {
+    background: linear-gradient(90deg, var(--ca-accent), var(--ca-accent-2));
+    border: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+button[data-testid="stBaseButton-primary"]:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px var(--ca-glow);
+}
+
+/* Top navigation */
+[data-testid="stTopNavLink"] {
+    transition: background-color 0.15s ease;
+}
+
+[data-testid="stTopNavLink"]:hover {
+    background: var(--ca-accent-soft) !important;
+}
+
+[data-testid="stTopNavLink"]:hover span {
     color: var(--ca-accent) !important;
 }
 
+/* ---------- Chat ---------- */
+[data-testid="stChatMessage"] {
+    background: var(--ca-surface);
+    border: 1px solid var(--ca-border);
+    border-radius: 12px;
+    padding: 0.8rem 1rem;
+    box-shadow: 0 1px 2px rgba(30, 27, 58, 0.04);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+[data-testid="stChatMessage"]:hover {
+    border-color: var(--ca-border-strong);
+    box-shadow: 0 4px 14px rgba(109, 40, 217, 0.08);
+}
+
+[data-testid="stChatMessage"] p {
+    font-size: 0.875rem;
+}
+
+[data-testid="stChatMessageAvatarAssistant"],
 [data-testid="stChatMessageAvatarUser"] {
-    background: color-mix(in srgb, var(--ca-accent-2) 14%, transparent) !important;
-    color: var(--ca-accent-2) !important;
+    width: 1.6rem;
+    height: 1.6rem;
+    min-width: 1.6rem;
+    border-radius: 50%;
+}
+
+[data-testid="stChatMessageAvatarAssistant"] {
+    background: linear-gradient(135deg, var(--ca-accent), var(--ca-accent-2)) !important;
+    color: #FFFFFF !important;
+}
+
+[data-testid="stChatMessageAvatarUser"] {
+    background: #1E1B3A !important;
+    color: #FFFFFF !important;
 }
 
 [data-testid="stChatMessageAvatarAssistant"] svg,
 [data-testid="stChatMessageAvatarUser"] svg {
-    width: 1rem;
-    height: 1rem;
+    width: 0.95rem;
+    height: 0.95rem;
     fill: currentColor;
-    color: inherit;
 }
 
-/* Gradient page headings */
+[data-testid="stChatInput"] {
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(109, 40, 217, 0.08);
+    transition: box-shadow 0.2s ease;
+}
+
+[data-testid="stChatInput"]:focus-within {
+    box-shadow: 0 0 0 3px var(--ca-glow);
+}
+
+[class*="st-key-agent_question_"] :is(p, button, input),
+[class*="st-key-agent_answer_"] p {
+    font-size: 0.85rem;
+}
+
+/* ---------- Content previews and cards ---------- */
+[class*="st-key-preview_"] {
+    background: var(--ca-surface);
+    border-color: var(--ca-border) !important;
+}
+
+[class*="st-key-preview_"] :is(p, li) {
+    font-size: 0.875rem !important;
+    line-height: 1.6;
+}
+
+[class*="st-key-preview_"] h1 { font-size: 1.35rem !important; }
+[class*="st-key-preview_"] h2 { font-size: 1.1rem !important; padding-top: 0.75rem !important; }
+[class*="st-key-preview_"] h3 { font-size: 0.95rem !important; }
+[class*="st-key-preview_"] :is(h1, h2, h3) { font-weight: 600 !important; }
+
+[data-testid="stMetric"],
+[data-testid="stExpander"] details {
+    background: var(--ca-surface);
+    border: 1px solid var(--ca-border);
+    border-radius: 12px;
+}
+
+[data-testid="stExpander"] summary:hover,
+[data-testid="stExpander"] summary:hover * {
+    color: var(--ca-accent) !important;
+}
+
 [data-testid="stHeading"] h3 span {
     background: linear-gradient(90deg, var(--ca-accent), var(--ca-accent-2));
     -webkit-background-clip: text;
@@ -150,68 +366,183 @@
     font-weight: 700;
 }
 
-/* Glass cards */
-[data-testid="stChatMessage"],
-[data-testid="stMetric"],
-[data-testid="stExpander"] details {
+/* ---------- Agents page ---------- */
+[class*="st-key-agent_card_"] {
     background: var(--ca-surface);
-    border: 1px solid var(--ca-border);
-    border-radius: 1rem;
-    backdrop-filter: blur(8px);
+    border-color: var(--ca-border) !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
-[data-testid="stChatMessage"] {
-    padding: 0.9rem 1rem;
+[class*="st-key-agent_card_"]:hover {
+    transform: translateY(-2px);
+    border-color: var(--ca-accent-2) !important;
+    box-shadow: 0 8px 22px rgba(109, 40, 217, 0.12);
 }
 
-/* Glowing chat input */
-[data-testid="stChatInput"] {
-    border-radius: 1.4rem;
-    box-shadow: 0 0 0 1px var(--ca-accent), 0 0 24px var(--ca-glow);
+[class*="st-key-agent_card_"] p {
+    font-size: 0.8rem;
 }
 
-/* Inputs and secondary buttons follow the palette instead of the base theme */
-[data-testid="stSelectbox"] [role="group"],
-[data-testid="stTextInputRootElement"],
-[data-testid="stTextInputRootElement"] > div,
-[data-testid="stTextAreaRootElement"],
-[data-testid="stTextAreaRootElement"] > div,
-[data-testid="stChatInput"] > div,
-button[data-testid="stBaseButton-secondary"],
-[data-testid="stButtonGroup"] button {
-    background-color: var(--ca-surface) !important;
+.st-key-agent_card_selected {
+    border-color: var(--ca-accent) !important;
+    box-shadow: 0 0 0 1px var(--ca-accent), 0 8px 22px rgba(109, 40, 217, 0.16);
+}
+
+.st-key-agent_diagram,
+.st-key-agent_about {
+    background: var(--ca-surface);
     border-color: var(--ca-border) !important;
 }
 
-[data-testid="stApp"] :is(input, textarea) {
-    background-color: transparent !important;
+/* Architecture flowcharts (components/flowchart.py): HTML boxes over SVG connectors, hover popovers */
+.ca-fc-scroll {
+    display: flex;
+    justify-content: center;
+    padding: 0.5rem 0 1rem;
 }
 
-/* Popups use the palette's popover color when it defines one */
-[data-testid="stPopoverBody"],
-[data-testid="stSelectboxVirtualDropdown"],
-[role="listbox"] {
-    background-color: var(--ca-popover, #120B26) !important;
-    border: 1px solid var(--ca-border);
+.ca-fc {
+    position: relative;
+    flex: none;
 }
 
-/* Selected pills and segmented options use the accent color */
-button[data-selected="true"] {
-    background-color: var(--ca-glow) !important;
-    border-color: var(--ca-accent) !important;
-    color: var(--ca-accent) !important;
+.ca-fc-edges {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    user-select: none;
 }
 
-button[data-testid="stBaseButton-secondary"]:hover,
-[data-testid="stButtonGroup"] button:hover {
-    border-color: var(--ca-accent) !important;
-    color: var(--ca-accent) !important;
+.ca-fc-node {
+    position: absolute;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0.35rem 0.7rem;
+    border-radius: 12px;
+    border: 1.5px solid;
+    cursor: default;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* Primary buttons get the theme gradient */
-button[data-testid="stBaseButton-primary"] {
-    background: linear-gradient(90deg, var(--ca-accent), var(--ca-accent-2));
-    border: none;
-    color: var(--ca-on-accent, #FFFFFF);
-    box-shadow: 0 4px 18px var(--ca-glow);
+.ca-fc-node:hover {
+    z-index: 20;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(76, 29, 149, 0.18);
+}
+
+.ca-fc-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.ca-fc-sub {
+    font-size: 11.5px;
+    line-height: 1.3;
+    margin-top: 2px;
+    opacity: 0.85;
+}
+
+.ca-fc-info {
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 6px;
+    opacity: 0.6;
+}
+
+/* Node kinds */
+.ca-fc-input     { background: #EEF2FF; border-color: #A5B4FC; color: #312E81; }
+.ca-fc-agent     { background: #F3EEFF; border-color: #C4B5FD; color: #4C1D95; }
+.ca-fc-tool      { background: #EFF6FF; border-color: #93C5FD; color: #1E3A8A; }
+.ca-fc-side      { background: #FFF8E6; border-color: #E9B949; color: #713F12; }
+.ca-fc-interrupt { background: #FEF3C7; border-color: #F59E0B; color: #78350F; border-width: 2px; }
+.ca-fc-store     { background: #ECFDF5; border-color: #6EE7B7; color: #065F46; }
+.ca-fc-result    { background: #DCFCE7; border-color: #86EFAC; color: #14532D; }
+
+/* Hover popover with the node's internal details */
+.ca-fc-tip {
+    display: none;
+    position: absolute;
+    top: -4px;
+    width: 280px;
+    padding: 0.65rem 0.8rem;
+    border-radius: 12px;
+    background: #1E1B3A;
+    color: #EDE9FE;
+    text-align: left;
+    box-shadow: 0 14px 30px rgba(15, 12, 40, 0.35);
+    z-index: 30;
+}
+
+.ca-fc-tip-right { left: calc(100% + 12px); }
+.ca-fc-tip-left  { right: calc(100% + 12px); }
+
+.ca-fc-node:hover .ca-fc-tip { display: block; }
+
+.ca-fc-tip-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #FFFFFF;
+    margin-bottom: 0.35rem;
+}
+
+.ca-fc-tip ul {
+    margin: 0;
+    padding-left: 1.05rem;
+}
+
+.ca-fc-tip li {
+    font-size: 12.5px;
+    line-height: 1.45;
+    margin-bottom: 0.2rem;
+    color: #DDD6FE;
+}
+
+.ca-fc-tip li:first-child {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 11.5px;
+    color: #C4B5FD;
+}
+
+/* Legend */
+.ca-fc-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1rem;
+    font-size: 12.5px;
+    color: var(--ca-muted);
+}
+
+.ca-fc-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.ca-fc-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1.5px solid;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+    .st-key-content_type_hint,
+    .st-key-brand_voice_hint,
+    .st-key-content_type_box:has(.st-key-content_type_hint),
+    .st-key-brand_voice:has(.st-key-brand_voice_hint),
+    [data-testid="stButtonGroup"] button,
+    button[data-testid="stBaseButton-primary"],
+    [class*="st-key-agent_card_"],
+    .ca-fc-node {
+        animation: none;
+        transition: none;
+        transform: none !important;
+    }
 }

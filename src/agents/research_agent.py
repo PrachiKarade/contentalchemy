@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 from src.integrations.serp_client import search_web
 from src.integrations.openai_client import generate_text
+from src.integrations.text_provider_manager import text_provider_manager
 from src.core.logger import setup_logger
 from src.prompts.research_agent_prompt import get_research_agent_system_prompt
 
@@ -18,12 +19,7 @@ from src.repositories.message_repository import add_message
 logger = setup_logger("research_agent")
 
 
-RESEARCH_SYSTEM_PROMPT = get_research_agent_system_prompt()
- 
-
-print("=" * 90)
-print("Research agent using SerpAPI and OpenAI")
-print("=" * 90)
+RESEARCH_SYSTEM_PROMPT = get_research_agent_system_prompt() 
 
 def research_topic(
     topic: str,
@@ -72,7 +68,7 @@ Extract useful findings and return the required JSON structure.
 
     # 3. Synthesize research
     emit({"event": "status", "text": f"Analyzing {len(search_results)} sources..."})
-    response = generate_text(
+    response = text_provider_manager.generate_text(
         query=query,
         system_prompt=RESEARCH_SYSTEM_PROMPT,
         max_output_tokens=3000,
@@ -148,10 +144,6 @@ def format_research_report(research_data: dict) -> str:
 # --------------------------------
 # Agent node for langchain integration and langgraph
 # -------------------------------
-print("=" * 90)
-print("Research agent using SerpAPI and OpenAI")
-print("=" * 90)
-
 def research_agent_node(state: ContentState) -> dict:
     """Run research and persist the generated research content."""
 
@@ -166,8 +158,10 @@ def research_agent_node(state: ContentState) -> dict:
     if not conversation:
         raise ValueError("Conversation not found.")
 
-    if conversation.get("content_type") != "research":
-        raise ValueError("This is not a research conversation.")
+    content_type = conversation.get("content_type", "").strip().lower()
+
+    if content_type not in ("research", "linkedin", "seo_blog"):
+        raise ValueError(  f"Research Agent does not support content type: {content_type}"  )
 
     topic = state.get("topic") or conversation.get("topic", "")
     target_audience = (
