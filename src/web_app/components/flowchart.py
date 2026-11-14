@@ -5,7 +5,7 @@ A diagram is {"nodes": {...}, "edges": [...]}.
 
 node: {"row", "col", "title", "sub"?, "kind", "details"?: [str], "width"?}
     col 0 / 1 / 2 are the left, centre and right columns (fractions allowed, e.g. 0.5).
-    kind: input | agent | tool | side | interrupt | store | result
+    kind: input | agent | tool | side | interrupt | store | result | router
     details are shown in a popover when the user hovers the box.
 
 edge: {"from", "to", "label"?, "route"?, "dx"?, "label_at"?}
@@ -29,7 +29,8 @@ COLUMNS = [138, 400, 662]
 ROW = 88
 TOP = 16
 NODE_HEIGHT = 54
-NODE_WIDTH = {"agent": 256, "interrupt": 330, "input": 256, "result": 256, "store": 256, "tool": 206, "side": 206}
+NODE_WIDTH = {"agent": 256, "interrupt": 330, "input": 256, "result": 256, "store": 256, "tool": 206, "side": 206,
+              "router": 256}
 LANE = 12  # canvas margin used by side routes
 LOOP_OUT = 40  # how far loops swing to the right
 EDGE_COLOR = "#8B8FB5"

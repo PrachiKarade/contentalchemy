@@ -84,9 +84,11 @@ class TestSEOBlogWriter(unittest.TestCase):
             SAMPLE_BLOG_DATA["seo_title"]
         )
 
+    #---------------------------------------------------------------
     def test_validate_blog_data(self):
         validate_blog_data(SAMPLE_BLOG_DATA)
 
+    #---------------------------------------------------------------
     def test_invalid_blog_data(self):
         invalid_data = {
             "seo_title": "Test blog"
@@ -95,38 +97,59 @@ class TestSEOBlogWriter(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_blog_data(invalid_data)
 
+    #---------------------------------------------------------------
     def test_format_blog_markdown(self):
         markdown = format_blog_markdown(SAMPLE_BLOG_DATA)
 
-        # SEO title, article, FAQs, call to action and sources are shown to the user.
-        self.assertTrue(markdown.startswith("# A Practical Guide to AI Content Marketing"))
-        self.assertIn("## What Is AI Content Marketing?", markdown)
+        # Article is the first section.
+        self.assertTrue(
+            markdown.startswith("## What Is AI Content Marketing?")
+        )
+
+        # FAQs, CTA and references are included.
         self.assertIn("## Frequently Asked Questions", markdown)
         self.assertIn("### Can AI replace content writers?", markdown)
         self.assertIn("## Call to Action", markdown)
-        self.assertIn("## Sources", markdown)
-        self.assertIn("[Example Research Source](https://example.com/ai-content-marketing)", markdown)
+        self.assertIn("## References", markdown)
+        self.assertIn(
+            "[Example Research Source](https://example.com/ai-content-marketing)",
+            markdown,
+        )
 
-        # SEO details and the outline stay in the blog data, not in the draft.
+        # SEO metadata and outline are excluded.
         self.assertNotIn("## SEO Details", markdown)
         self.assertNotIn("## Article Outline", markdown)
         self.assertNotIn("## Complete Blog Article", markdown)
 
 
+    #---------------------------------------------------------------
+    @patch("src.agents.blog_writer.stream_blog_article")
+    @patch("src.agents.blog_writer.plan_seo_blog")
+    def test_write_seo_blog(self, mock_plan, mock_stream_article):
 
-    @patch("src.agents.blog_writer.stream_text")
-    @patch("src.agents.blog_writer.build_seo_blog_writer")
-    def test_write_seo_blog(self, mock_build_writer, mock_stream_text):
-        fake_agent = MagicMock()
+        plan = {
+            key: value
+            for key, value in SAMPLE_BLOG_DATA.items()
+            if key != "blog_article"
+        }
 
-        # The agent returns the plan; the article is streamed separately.
-        plan = {key: value for key, value in SAMPLE_BLOG_DATA.items() if key != "blog_article"}
+        # Return the plan and verified source URLs.
+        mock_plan.return_value = (
+            plan,
+            [
+                {
+                    "url": "https://example.com/ai-content-marketing"
+                }
+            ],
+        )
 
-        fake_agent.stream.return_value = iter([
-            {"model": {"messages": [AIMessage(content=json.dumps(plan))]}}
+        # Stream the article in chunks.
+        article = SAMPLE_BLOG_DATA["blog_article"].strip()
+
+        mock_stream_article.return_value = iter([
+            article[:80],
+            article[80:],
         ])
-        mock_build_writer.return_value = fake_agent
-        mock_stream_text.return_value = iter([SAMPLE_BLOG_DATA["blog_article"]])
 
         result = write_seo_blog(
             topic="AI content marketing",
@@ -136,10 +159,23 @@ class TestSEOBlogWriter(unittest.TestCase):
             objective="Educate readers",
         )
 
-        assert result["seo_title"] == SAMPLE_BLOG_DATA["seo_title"]
-        assert result["primary_keyword"] == SAMPLE_BLOG_DATA["primary_keyword"]
-        assert result["blog_article"] == SAMPLE_BLOG_DATA["blog_article"].strip()
-        fake_agent.stream.assert_called_once()
+        self.assertEqual(
+            result["seo_title"],
+            SAMPLE_BLOG_DATA["seo_title"],
+        )
+
+        self.assertEqual(
+            result["primary_keyword"],
+            SAMPLE_BLOG_DATA["primary_keyword"],
+        )
+
+        self.assertEqual(
+            result["blog_article"],
+            article,
+        )
+
+        mock_plan.assert_called_once()
+        mock_stream_article.assert_called_once()
 
 
 if __name__ == "__main__":

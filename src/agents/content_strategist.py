@@ -87,62 +87,57 @@ BRAND VOICE PREFERENCES:
 
 """
 
-        # 4. Generate readable research report
-        logger.info("Generating readable research report.")
+        # 4. Generate Research Report and Content Strategy together
+        logger.info("Generating research report and content strategy.")
+
 
         report_prompt = f"""
-Using the research context below, generate the Research Report only.
+        Using the research context below, generate both deliverables
+        according to your system instructions.
 
-Follow the Research Report requirements in your system instructions.
+        First generate the complete Research Report.
 
-Preserve the research evidence and source references.
-Do not invent facts or sources.
+        Then generate the complete Content Strategy based on the
+        research findings and the user's context.
 
-{research_context}
-"""
+        Follow the exact output separator specified in your system instructions.
 
-        research_report = text_provider_manager.generate_text(
+        Do not generate a blog article or LinkedIn post.
+
+        RESEARCH CONTEXT:
+        {research_context}
+        """
+
+        combined_output = text_provider_manager.generate_text(
             query=report_prompt,
             system_prompt=CONTENT_STRATEGIST_SYSTEM_PROMPT,
-            max_output_tokens=4000,
+            max_output_tokens=7000,
         )
 
-        if not research_report or not research_report.strip():
-            raise ValueError("Research report generation returned empty content.")
+        if not combined_output or not combined_output.strip():
+            raise ValueError("Content strategist returned empty content.")
 
-        # 5. Generate content strategy
-        logger.info("Generating content strategy.")
+        # 5. Separate the two deliverables
+        separator = "---CONTENT_STRATEGY_START---"
 
-        strategy_prompt = f"""
-Using the research context and report below, generate the Content Strategy only.
-
-Follow the Content Strategy requirements in your system instructions.
-Do not generate a blog article or social media post.
-
-RESEARCH CONTEXT:
-{research_context}
-
-RESEARCH REPORT:
-{research_report}
-"""
-
-        content_strategy = text_provider_manager.generate_text(
-            query=strategy_prompt,
-            system_prompt=CONTENT_STRATEGIST_SYSTEM_PROMPT,
-            max_output_tokens=3000,
+        research_report, separator_found, content_strategy = (
+            combined_output.partition(separator)
         )
 
-        if not content_strategy or not content_strategy.strip():
-            raise ValueError("Content strategy generation returned empty content.")
+        if not separator_found:
+            raise ValueError( "Content strategist output is missing the content strategy separator." )
+
+        research_report  = research_report.strip()
+        content_strategy = content_strategy.strip()
 
         # 6. Prepare combined content for existing review node
         combined_content = f"""
-{research_report.strip()}
+        {research_report.strip()}
 
----
+        ---
 
-{content_strategy.strip()}
-"""
+        {content_strategy.strip()}
+        """
 
         # 7. Persist generated output
         saved_message = add_message(
@@ -165,10 +160,30 @@ RESEARCH REPORT:
 
         message_id = saved_message["message_id"]
 
-        logger.info(
-            "Content Strategist output saved. Message ID: %s",
-            message_id,
-        )
+         # Preserve explicitly requested research and strategy deliverables.
+         
+        multi_agent_results = dict(  state.get("multi_agent_results", {})  )
+        requested_agents    = state.get("requested_agents", [])
+
+        if state.get("intent") == "multi":
+
+            if "research" in requested_agents:
+                multi_agent_results["research"] = {
+                    "content": research_report,
+                    "content_text": research_report,
+                    "message_id": message_id,
+                    "status": "draft",
+                }
+
+            if "strategy" in requested_agents:
+                multi_agent_results["strategy"] = {
+                    "content": content_strategy,
+                    "content_text": content_strategy,
+                    "message_id": message_id,
+                    "status": "draft",
+                }
+
+        logger.info( "Content Strategist output saved. Message ID: %s",  message_id, )
 
         # 8. Update completed agents
         completed_agents = list(state.get("completed_agents", []))
@@ -184,13 +199,10 @@ RESEARCH REPORT:
             "current_agent": "content_strategist",
             "generated_content_message_id": message_id,
             "completed_agents": completed_agents,
+            "multi_agent_results": multi_agent_results,
             "messages": [AIMessage(content=combined_content)],
         }
 
     except Exception as e:
         logger.exception("Content Strategist failed.")
-
-        return {
-            "errors": [f"Content Strategist failed: {str(e)}"],
-            "current_agent": "content_strategist",
-        }
+        raise

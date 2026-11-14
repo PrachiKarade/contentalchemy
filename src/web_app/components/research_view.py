@@ -107,17 +107,40 @@ def render_strategy(strategy: str) -> None:
         st.caption("No content strategy in this report.")
 
 
+STRATEGY_TAB = ":material/strategy: Content strategy"
+
+
 def render_research(body: str, key: str) -> None:
-    """Show the research report, content strategy and sources in tabs."""
+    """Show the research report, content strategy (only if the strategist ran) and sources in tabs."""
 
     research = parse_research(body)
+    has_strategy = bool(research["strategy"].strip())
 
-    report_tab, strategy_tab, sources_tab = st.tabs(
-        [":material/description: Research report", ":material/strategy: Content strategy", ":material/link: Sources"]
-    )
-    with report_tab, st.container(border=True, height=DRAFT_HEIGHT, key=key):
+    names = [":material/description: Research report"]
+    if has_strategy:
+        names.append(STRATEGY_TAB)
+    names.append(":material/link: Sources")
+    tabs = dict(zip(names, st.tabs(names)))
+
+    with tabs[names[0]], st.container(border=True, height=DRAFT_HEIGHT, key=key):
         st.markdown(research["report"])
-    with strategy_tab, st.container(border=True, height=DRAFT_HEIGHT, key=f"{key}_strategy"):
-        render_strategy(research["strategy"])
-    with sources_tab, st.container(border=True, height=DRAFT_HEIGHT, key=f"{key}_sources"):
+    if has_strategy:
+        with tabs[STRATEGY_TAB], st.container(border=True, height=DRAFT_HEIGHT, key=f"{key}_strategy"):
+            render_strategy(research["strategy"])
+    with tabs[names[-1]], st.container(border=True, height=DRAFT_HEIGHT, key=f"{key}_sources"):
         render_sources(research["sources"])
+
+
+def render_with_strategy(content: str, strategy: str, key: str, label: str) -> None:
+    """A draft in a bordered box, with a Content strategy tab beside it when a strategy exists."""
+
+    if not (strategy or "").strip():
+        with st.container(border=True, height=DRAFT_HEIGHT, key=key):
+            st.markdown(content)
+        return
+
+    content_tab, strategy_tab = st.tabs([label, STRATEGY_TAB])
+    with content_tab, st.container(border=True, height=DRAFT_HEIGHT, key=key):
+        st.markdown(content)
+    with strategy_tab, st.container(border=True, height=DRAFT_HEIGHT, key=f"{key}_strategy"):
+        st.markdown(strategy)

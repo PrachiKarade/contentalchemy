@@ -1,4 +1,6 @@
-# Secrets: API keys (OpenAI, SerpAPI) and MongoDB URI. Keep the template.
+# Secrets: API keys (OpenAI, Anthropic, Gemini, Perplexity, SerpApi, Tavily,
+# Stability, LangSmith), MongoDB URI and storage keys. Keep the template.
+# .env.* also covers per-environment files such as .env.development / .env.production.
 .env
 .env.*
 !.env.example
@@ -20,9 +22,11 @@ dist/
 # Tests and tooling caches
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+.ipynb_checkpoints/
 
 # Logs
 logs/
@@ -34,5 +38,17 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Generated image artifacts
-generated/images/
+# Generated artifacts (local image storage fallback)
+generated/
+
+# Docker: personal overrides of docker-compose.yml
+docker-compose.override.yml
+
+# MongoDB backups (mongodump, see docs/deployment-guide.md)
+dump/
+*.archive
+
+# Azurite data when run outside Docker (npm / VS Code extension)
+__azurite_db_*.json
+__blobstorage__/
+__queuestorage__/

@@ -8,6 +8,8 @@ from src.integrations.providers.images.provider_errors import (
     ImageProviderError,
     InsufficientCreditsError,
 )
+from src.integrations.providers.images.openai_provider import (  OpenAIImageProvider,)
+from src.integrations.providers.images.gemini_provider import (  GeminiImageProvider,)
 
 load_dotenv()
 
@@ -31,14 +33,19 @@ class ImageProviderManager:
             if name.strip()
         ]
 
-        self.providers = {
-            "stability": StabilityImageProvider(),
-        }
+        self.providers = {}
+
+        if os.getenv("STABILITY_IMAGE_ENABLED", "false").lower() == "true":
+            self.providers["stability"] = StabilityImageProvider()
+
+        if os.getenv("OPENAI_IMAGE_ENABLED", "false").lower() == "true":
+            self.providers["openai"] = OpenAIImageProvider()
+
+        if os.getenv("GEMINI_IMAGE_ENABLED", "false").lower() == "true":
+            self.providers["gemini"] = GeminiImageProvider()
 
         if self.primary_provider not in self.providers:
-            raise ValueError(
-                f"Unsupported image provider: {self.primary_provider}"
-            )
+            raise ValueError( f"Unsupported image provider: {self.primary_provider}" )
 
         logger.info(
             "Primary image provider: %s | Fallback providers: %s",
@@ -64,6 +71,7 @@ class ImageProviderManager:
         provider_names = [ self.primary_provider, *self.fallback_providers, ]
 
         errors = []
+        exceptions = []
 
         for provider_name in dict.fromkeys(provider_names):
             provider = self.providers.get(provider_name)
@@ -87,32 +95,28 @@ class ImageProviderManager:
                 }
 
             except ImageProviderError as exc:
-                logger.warning(
-                    "Provider %s failed: %s",
-                    provider_name,
-                    exc,
-                )
+                logger.warning(  "Provider %s failed: %s",  provider_name, exc, )
                 errors.append(f"{provider_name}: {exc}")
-
-                # Continue to the next provider.
-                continue
+                exceptions.append(exc)                
+                continue # Continue to the next provider.
 
             except Exception as exc:
-                logger.exception(
-                    "Unexpected error from provider %s",
-                    provider_name,
-                )
+                logger.exception( "Unexpected error from provider %s", provider_name, )
                 errors.append(f"{provider_name}: Unexpected error")
+                exceptions.append(exc)
 
-        if errors and all(
+        if exceptions and all(
             isinstance(error, InsufficientCreditsError)
-            for error in errors
+            for error in exceptions
         ):
             raise InsufficientCreditsError(
                 "All configured image providers have insufficient credits."
             )
 
+        # Raise a general error if all configured providers fail.
         raise ImageProviderError(
             "All configured image providers failed. "
-            + " | ".join(str(error) for error in errors)
+            + " | ".join(errors)
         )
+    
+        

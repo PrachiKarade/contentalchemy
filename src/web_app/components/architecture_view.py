@@ -1,7 +1,7 @@
 
 """Architecture page: ContentAlchemy's agent workflows as flowcharts.
 
-Five diagrams (SEO blog, LinkedIn, Research, Image, Content strategist) show how the agents pass
+A system overview plus six diagrams (SEO blog, LinkedIn, Research, Image, Content strategist, Multi-content) show how the agents pass
 information to each other and where the workflow pauses for the user (INTERRUPT). Hovering a box shows
 what happens inside it. Mirrors src/core/workflow.py and the agent modules; keep them in sync.
 """
@@ -311,7 +311,200 @@ CONTENT_STRATEGIST = {
     ],
 }
 
+MULTI_IMAGE_COL = 1.6
+MULTI_IMAGE_WIDTH = 220
+
+MULTI_CONTENT = {
+    "nodes": {
+        "user": {"row": 0, "col": 1, "kind": "input", "title": "User Multi-content Request", "sub": "Several deliverables at once",
+                 "details": ["Typed in the Chat tab with Multi-content selected.",
+                             "e.g. “A LinkedIn post and an SEO blog about X, with an image”."]},
+        "query": query_handler(1, "Detects the requested deliverables"),
+        "requested": {"row": 1, "col": 0, "kind": "side", "title": "Requested deliverables", "sub": "research · strategy · linkedin · blog · image",
+                      "details": ["requested_agents: only what you explicitly asked for.",
+                                  "Each one gets its own tab in the Content tab.",
+                                  "Image only: the workflow skips research and goes straight to the orchestrator."]},
+        "profile": {"row": 2, "col": 1, "kind": "interrupt", "title": "LinkedIn Profile Interaction — INTERRUPT",
+                    "sub": "Only when a LinkedIn post is requested",
+                    "details": ["src/agents/linkedin_interaction.py · interrupt() per question",
+                                "Same profile questions as the LinkedIn workflow, asked in the Chat tab."]},
+        "research": research_agent(3),
+        "strategist": {"row": 4, "col": 1, "kind": "agent", "title": "Content Strategist", "sub": "Research report + content strategy",
+                       "details": STRATEGIST_DETAILS + ["Research and strategy deliverables come from here when requested."]},
+        "orchestrator": {"row": 5, "col": 1, "kind": "agent", "title": "Multi-agent Orchestrator", "sub": "Picks the next requested deliverable",
+                         "details": ["src/agents/multi_agent_orchestrator.py",
+                                     "Walks requested_agents in order and skips finished ones.",
+                                     "LinkedIn post / SEO blog → Multi Content Generator.",
+                                     "Image → the image agents.",
+                                     "When every deliverable is generated → Content Review."]},
+        "writer": {"row": 6, "col": 0, "kind": "agent", "title": "Multi Content Generator", "sub": "LinkedIn post or SEO blog",
+                   "details": ["src/agents/content_generator.py → multi_content_generator_node()",
+                               "Uses the shared research report and strategy.",
+                               "LinkedIn uses your profile answers; the SEO blog streams while it is written.",
+                               "Scores quality and saves a draft per deliverable."]},
+        "image_prefs": {"row": 6, "col": MULTI_IMAGE_COL, "kind": "interrupt", "width": MULTI_IMAGE_WIDTH,
+                        "title": "Image Preferences — INTERRUPT", "sub": "Only missing ones",
+                        "details": ["src/agents/image_preferences.py",
+                                    "Purpose, visual style, orientation, quality — asked in the Chat tab."]},
+        "image_gen": {"row": 7, "col": MULTI_IMAGE_COL, "kind": "agent", "width": MULTI_IMAGE_WIDTH,
+                      "title": "Image Generator", "sub": "Prompt focused on the topic",
+                      "details": ["src/agents/image_generator.py",
+                                  "In a multi request the prompt focuses on the topic, not the other deliverables.",
+                                  "If every provider fails, the image is marked failed and the other deliverables continue."]},
+        "image_review": {"row": 8, "col": MULTI_IMAGE_COL, "kind": "interrupt", "width": MULTI_IMAGE_WIDTH,
+                         "title": "Image Review — INTERRUPT", "sub": "Approve · edit · regenerate · reject",
+                         "details": ["src/agents/image_review.py · interrupt()",
+                                     "Shown in the Chat tab and the Image tab of the Content tab.",
+                                     "Rejecting the image does not stop the other deliverables."]},
+        "review": {**content_review(9, "each text deliverable"),
+                   "details": ["src/agents/content_review.py → multi_content_review_node() · interrupt() per deliverable",
+                               "Each draft comes up in its own tab of the Content tab, one after another.",
+                               "Approve or reject each one; an edit is saved as the approved version.",
+                               "Rejecting one draft moves on to the next."]},
+        "result": {"row": 10, "col": 1, "kind": "result", "title": "Approved pieces to Streamlit", "sub": "Content tab and dashboard",
+                   "details": ["Each approved piece is saved as final content in MongoDB.",
+                               "The Content dashboard lists every approved piece separately."]},
+    },
+    "edges": [
+        {"from": "user", "to": "query"},
+        {"from": "query", "to": "requested", "route": "across"},
+        {"from": "query", "to": "profile", "label": "LinkedIn post requested"},
+        {"from": "query", "to": "research", "route": "side", "label": "No LinkedIn post"},
+        {"from": "profile", "to": "research", "label": "Profile answers"},
+        {"from": "research", "to": "strategist", "label": "Research findings and sources"},
+        {"from": "strategist", "to": "orchestrator", "label": "Report + strategy"},
+        {"from": "orchestrator", "to": "writer", "label": "linkedin / blog"},
+        {"from": "orchestrator", "to": "image_prefs", "label": "image"},
+        {"from": "writer", "to": "orchestrator", "route": "side", "label": "Next deliverable"},
+        {"from": "image_prefs", "to": "image_prefs", "label": "Until all 4 set"},
+        {"from": "image_prefs", "to": "image_gen"},
+        {"from": "image_gen", "to": "image_review", "label": "Generated image"},
+        {"from": "image_review", "to": "image_gen", "label": "Edit / Regenerate"},
+        {"from": "image_review", "to": "orchestrator", "route": "side", "label": "Approve / Reject"},
+        {"from": "orchestrator", "to": "review", "route": "straight", "label": "All generated", "label_at": (410, 798)},
+        {"from": "review", "to": "result", "label": "Decisions"},
+    ],
+}
+
+# System architecture: every workflow on one page. Left column = single LinkedIn / blog / research chain,
+# centre = multi-content orchestration, right = image chain. Box widths keep the columns and lanes apart.
+SYS_LEFT, SYS_CENTRE, SYS_RIGHT = 230, 230, 190
+
+SYSTEM = {
+    "nodes": {
+        "user": {"row": 0, "col": 1, "kind": "input", "width": SYS_CENTRE, "title": "User", "sub": "Types a request in the chat",
+                 "details": ["Picks a content type and brand voice in the sidebar, then describes what they need.",
+                             "Answers agent questions and reviews every draft before it is approved."]},
+        "ui": {"row": 1, "col": 1, "kind": "input", "width": SYS_CENTRE, "title": "Streamlit UI", "sub": "Chat · Content · Dashboard",
+               "details": ["src/web_app/streamlit_app.py · src/web_app/assistant.py",
+                           "Starts one LangGraph thread per conversation (thread_id = conversation_id).",
+                           "Shows the agent's question or draft when the graph pauses, then resumes it.",
+                           "Reads History and the Content dashboard back from MongoDB."]},
+        "query": {**query_handler(2, "Understands the request"), "width": SYS_CENTRE, "title": "Query Handler Agent"},
+        "router": {"row": 3, "col": 1, "kind": "router", "width": SYS_CENTRE, "title": "Intent Router (LangGraph)",
+                   "sub": "Picks the agent chain",
+                   "details": ["src/core/workflow.py → route_after_query_handler()",
+                               "LinkedIn → profile questions, then research.",
+                               "Research / SEO blog → Deep Research Agent.",
+                               "Image only → Image Request Analyzer.",
+                               "Multi request → LinkedIn questions and research first if needed, then the orchestrator."]},
+        # Left: single LinkedIn / SEO blog / research chain
+        "profile": {"row": 4, "col": 0, "kind": "interrupt", "width": SYS_LEFT, "title": "LinkedIn Profile Interaction",
+                    "sub": "LinkedIn requests · INTERRUPT",
+                    "details": ["src/agents/linkedin_interaction.py · interrupt() per question",
+                                "Asks for the profile answers it doesn't have yet, then saves them for next time."]},
+        "research": {"row": 5, "col": 0, "kind": "agent", "width": SYS_LEFT, "title": "Deep Research Agent",
+                     "sub": "Searches and synthesizes",
+                     "details": ["src/agents/research_agent.py",
+                                 "Web search (SerpApi, falling back to Tavily), with a prompt-injection check on results.",
+                                 "Grounding guardrails keep only sources that came from the search.",
+                                 "Research only (no strategy requested) → straight to Content Review."]},
+        "strategist": {"row": 6, "col": 0, "kind": "agent", "width": SYS_LEFT, "title": "Content Strategist Agent",
+                       "sub": "Plan based on the research", "details": STRATEGIST_DETAILS},
+        "generator": {"row": 7, "col": 0, "kind": "agent", "width": SYS_LEFT, "title": "Content Generator",
+                      "sub": "Single SEO blog / LinkedIn post",
+                      "details": ["src/agents/content_generator.py",
+                                  "Writes from the research report, the strategy and the brand voice.",
+                                  "Output guardrails check the fields; the draft gets a quality score."]},
+        "review": {"row": 8, "col": 0, "kind": "interrupt", "width": SYS_LEFT, "title": "Content Review",
+                   "sub": "Approve · edit · reject", "details": CONTENT_REVIEW_DETAILS},
+        # Centre: multi-content orchestration
+        "orchestrator": {"row": 4, "col": 1, "kind": "router", "width": SYS_CENTRE, "title": "Multi-Agent Orchestrator",
+                         "sub": "Coordinates the deliverables",
+                         "details": ["src/agents/multi_agent_orchestrator.py",
+                                     "Walks the requested deliverables in order and skips finished ones.",
+                                     "Blog / LinkedIn → Multi Content Generator. Image → the image agents.",
+                                     "When everything is generated → Multi Content Review."]},
+        "multi_gen": {"row": 5, "col": 1, "kind": "agent", "width": SYS_CENTRE, "title": "Multi Content Generator",
+                      "sub": "Blog / LinkedIn in multi mode",
+                      "details": ["src/agents/content_generator.py → multi_content_generator_node()",
+                                  "Shares one research report and strategy across every text deliverable.",
+                                  "Saves a draft per deliverable, then hands control back to the orchestrator."]},
+        "multi_review": {"row": 6, "col": 1, "kind": "interrupt", "width": SYS_CENTRE, "title": "Multi Content Review",
+                         "sub": "Each text deliverable in turn",
+                         "details": ["src/agents/content_review.py → multi_content_review_node() · interrupt()",
+                                     "Each draft opens in its own tab of the Content page.",
+                                     "Approve or reject each one; rejecting one moves on to the next."]},
+        "mongo": {"row": 8, "col": 1, "kind": "store", "width": SYS_CENTRE, "title": "MongoDB",
+                  "sub": "conversations · messages · profiles",
+                  "details": ["src/repositories/",
+                              "Every agent saves its questions, answers, drafts and final content here.",
+                              "History, the Content tab and the dashboard read it back."]},
+        # Right: image chain
+        "image_analyzer": {"row": 5, "col": 2, "kind": "agent", "width": SYS_RIGHT, "title": "Image Request Analyzer",
+                           "sub": "Reads image requirements",
+                           "details": ["src/agents/image_preferences.py → image_request_analyzer_node()",
+                                       "Extracts purpose, style, orientation and quality from the request."]},
+        "image_prefs": {"row": 6, "col": 2, "kind": "interrupt", "width": SYS_RIGHT, "title": "Image Preference Interaction",
+                        "sub": "When required",
+                        "details": ["src/agents/image_preferences.py · interrupt() per question",
+                                    "Asks only for the preferences the request left out."]},
+        "image_gen": {"row": 7, "col": 2, "kind": "agent", "width": SYS_RIGHT, "title": "Image Generation Agent",
+                      "sub": "Configured providers",
+                      "details": ["src/agents/image_generator.py",
+                                  "Stability AI, falling back to OpenAI, then Gemini.",
+                                  "If every provider fails, the image is shown as currently unavailable."]},
+        "image_review": {"row": 8, "col": 2, "kind": "interrupt", "width": SYS_RIGHT, "title": "Image Review",
+                         "sub": "Approve · edit · regenerate · reject",
+                         "details": ["src/agents/image_review.py · interrupt()",
+                                     "Edit or regenerate goes back to the Image Generation Agent.",
+                                     "In multi mode, approve or reject returns to the orchestrator."]},
+        "external": {"row": 9, "col": 1.5, "kind": "tool", "width": 300, "title": "External services",
+                     "sub": "OpenAI · SerpApi → Tavily · Stability → OpenAI / Gemini",
+                     "details": ["src/integrations/",
+                                 "Text: OpenAI, Gemini, Claude, Perplexity with automatic fallback.",
+                                 "Search: SerpApi (Google), falling back to Tavily.",
+                                 "Images: Stability AI, falling back to OpenAI and Gemini."]},
+    },
+    "edges": [
+        {"from": "user", "to": "ui"},
+        {"from": "ui", "to": "query"},
+        {"from": "query", "to": "router"},
+        {"from": "router", "to": "profile", "label": "LinkedIn"},
+        {"from": "router", "to": "research", "route": "side", "label": "Research / Blog", "label_at": (40, 300)},
+        {"from": "router", "to": "orchestrator", "label": "Multi request"},
+        {"from": "router", "to": "image_analyzer", "dx": -30, "label": "Image only"},
+        {"from": "profile", "to": "research", "label": "then research"},
+        {"from": "research", "to": "strategist", "label": "Strategy required"},
+        {"from": "strategist", "to": "generator", "label": "Blog / LinkedIn"},
+        {"from": "generator", "to": "review"},
+        {"from": "orchestrator", "to": "multi_gen", "label": "Blog / LinkedIn", "label_at": (318, 444)},
+        {"from": "orchestrator", "to": "image_analyzer", "dx": 30, "label": "image task"},
+        {"from": "multi_gen", "to": "orchestrator", "label": "next", "label_at": (521, 412)},
+        {"from": "orchestrator", "to": "multi_review", "route": "straight", "label": "All generated", "label_at": (410, 531)},
+        {"from": "image_analyzer", "to": "image_prefs"},
+        {"from": "image_prefs", "to": "image_gen", "label": "preferences ready"},
+        {"from": "image_gen", "to": "image_review"},
+        {"from": "image_review", "to": "orchestrator", "route": "side", "label": "return for multi"},
+        {"from": "multi_review", "to": "mongo", "label": "drafts · decisions"},
+        {"from": "review", "to": "mongo", "route": "across"},
+        {"from": "image_review", "to": "external", "label": "providers"},
+    ],
+}
+
 WORKFLOWS = {
+    "system": {"name": "System architecture", "icon": ":material/lan:", "summary": "Every agent and route on one page.",
+               "diagram": SYSTEM},
     "blog": {"name": "SEO Blog", "icon": ":material/article:", "summary": "Research, strategy, then a streamed SEO article.",
              "diagram": SEO_BLOG},
     "linkedin": {"name": "LinkedIn", "icon": ":material/work:", "summary": "Profile questions, then a tailored post.",
@@ -322,11 +515,24 @@ WORKFLOWS = {
               "diagram": IMAGE},
     "strategist": {"name": "Content Strategist", "icon": ":material/psychology:", "summary": "How research becomes a content plan.",
                    "diagram": CONTENT_STRATEGIST},
+    "multi": {"name": "Multi-content", "icon": ":material/dashboard_customize:",
+              "summary": "Several deliverables, one orchestrated run.", "diagram": MULTI_CONTENT},
 }
 
 
 # Short description shown above each workflow: what the agent does, what you give it, what you get.
 ABOUT = {
+    "system": {
+        "what": "The whole system on one page. Your request goes from the Streamlit UI to the Query Handler, and the "
+        "Intent Router sends it down one of three chains. **Left:** a single LinkedIn post, SEO blog or research "
+        "report (research → strategy → writing → review). Research-only requests go straight from the Deep "
+        "Research Agent to Content Review. **Centre:** the Multi-Agent Orchestrator runs each requested deliverable "
+        "in turn and gets control back after each one. **Right:** the image chain. Every agent saves to MongoDB, "
+        "and every LLM, search and image call goes through providers that fall back automatically. Dashed boxes "
+        "are routers, which pick the next agent.",
+        "give": "Any request, from one LinkedIn post to a multi-content bundle with an image.",
+        "get": "Drafts you approve, edit or reject at each review step, saved to History and the Content dashboard.",
+    },
     "blog": {
         "what": "Writes long-form, search-optimized blog articles. It researches your topic on the web, plans the "
         "article with the Content Strategist, then writes it while you watch it stream in the Content tab.",
@@ -356,6 +562,13 @@ ABOUT = {
         "with your preferences and brand voice into a content strategy the writers follow.",
         "give": "Nothing directly: it receives the research and your preferences from the other agents.",
         "get": "A research report and a content strategy: themes, key messages, angles, outline and CTA direction.",
+    },
+    "multi": {
+        "what": "Produces several pieces from one request. The query handler detects which deliverables you asked "
+        "for; the LinkedIn and image agents ask their questions; one research and strategy pass feeds every writer; "
+        "the orchestrator runs each deliverable in turn, then you review them one by one.",
+        "give": "One request naming the pieces you want (e.g. LinkedIn post, SEO blog, image, research).",
+        "get": "A tab per piece in the Content tab, each approved or rejected on its own.",
     },
 }
 
@@ -414,11 +627,14 @@ def render_workflow_picker(selected: str) -> None:
             )
 
 
-def render_legend() -> None:
+def render_legend(diagram: dict) -> None:
     items = [
-        ("input", "User"), ("agent", "Agent"), ("tool", "Tool / data source"), ("side", "Settings input"),
-        ("interrupt", "INTERRUPT · waits for you"), ("store", "MongoDB"), ("result", "Result"),
+        ("input", "User"), ("agent", "Agent"), ("router", "Router · picks the next agent"), ("tool", "Tool / data source"),
+        ("side", "Settings input"), ("interrupt", "INTERRUPT · waits for you"), ("store", "MongoDB"), ("result", "Result"),
     ]
+    # Only the kinds this diagram uses.
+    kinds = {node["kind"] for node in diagram["nodes"].values()}
+    items = [(kind, label) for kind, label in items if kind in kinds]
     swatches = "".join(
         f'<span class="ca-fc-legend-item"><span class="ca-fc-swatch ca-fc-{kind}"></span>{label}</span>'
         for kind, label in items
@@ -434,14 +650,15 @@ def render_architecture() -> None:
     )
     render_overview()
 
-    selected = st.session_state.get("architecture_selected", "blog")
+    selected = st.session_state.get("architecture_selected", "system")
     if selected not in WORKFLOWS:
-        selected = "blog"
+        selected = "system"
     render_workflow_picker(selected)
 
     # What the agent does first, then its workflow.
     render_about(selected)
     with st.container(border=True, key="agent_diagram"):
-        st.markdown(f"**:material/account_tree: {WORKFLOWS[selected]['name']} workflow**")
-        render_legend()
+        name = WORKFLOWS[selected]["name"]
+        st.markdown(f"**:material/account_tree: {name if selected == 'system' else name + ' workflow'}**")
+        render_legend(WORKFLOWS[selected]["diagram"])
         st.html(render_flowchart(WORKFLOWS[selected]["diagram"]))

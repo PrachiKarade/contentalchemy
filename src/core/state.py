@@ -108,3 +108,15 @@ class ContentState(TypedDict, total=False):
     # Workflow tracking
     completed_agents: list[str] # the list of agents that have completed their tasks in the workflow
     errors: list[str] # the list of errors encountered during the workflow execution
+
+    # Content quality scoring
+    quality_score: int
+    quality_grade: str
+    quality_details: dict
+    quality_suggestions: list[str]
+
+    # Multi-agent workflow
+    requested_agents: list[str]
+    multi_agent_results: dict
+    multi_agent_status: str
+    next_agent: str

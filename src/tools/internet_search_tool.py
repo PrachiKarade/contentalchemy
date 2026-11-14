@@ -1,6 +1,7 @@
 
 from src.core.logger import setup_logger
 from src.integrations.serp_client import search_web
+from src.guardrails.tool_guardrails import  InternetSearchToolInput
 
 logger = setup_logger("internet_search_tool")
 
@@ -22,19 +23,22 @@ def internet_search_tool(
     topic = topic.strip()
     primary_keyword = primary_keyword.strip()
 
+    validated = InternetSearchToolInput(topic = topic , primary_keyword= primary_keyword)
+
     logger.info("Starting SEO search for topic: %s", topic)
 
     # Search 1: Broad topic research
     topic_results = search_web(
-        query = topic,
+        query = validated.topic,
         num_results = num_results,
     )
 
     # Search 2: Targeted primary keyword search
     keyword_results = []
     if primary_keyword and primary_keyword.lower() != topic.lower():
+        
         keyword_results = search_web(
-            query = primary_keyword,
+            query = validated.primary_keyword,
             num_results = num_results,
         )
 

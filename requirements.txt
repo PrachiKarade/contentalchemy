@@ -12,11 +12,21 @@ langchain==1.4.7
 langchain-core==1.7.0
 langchain-openai==1.7.3
 
-# OpenAI Responses API (text generation and streaming)
+# LLM providers with fallback: OpenAI (Responses API + images), Anthropic Claude, Google Gemini
 openai==3.40.0
+anthropic==2.5.0
+google-genai==2.34.0
 
-# Google search for research and SEO (SERPAPI_KEY)
+# Research: Google search via SerpAPI (SERPAPI_KEY) and Tavily web search
 serpapi==1.1.2
+tavily-python==0.8.5
+
+# HTTP calls (Stability image provider, URL checks) and guardrail data models
+requests==2.34.2
+pydantic==2.14.1
+
+# Generated image storage in Azure Blob Storage
+azure-storage-blob==12.31.1
 
 # Conversations, messages and profiles (MONGODB_URI, mongodb+srv needs dnspython)
 pymongo==4.19.0
@@ -26,3 +36,6 @@ dnspython==2.9.1
 python-dotenv==1.2.4
 
 typing_extensions==4.16.0
+
+# Tests: pytest tests/
+pytest==9.2.0

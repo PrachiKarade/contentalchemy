@@ -38,6 +38,29 @@ def _update_image_message(
             f"Could not update image message {message_id}."
         )
 
+# ----------------------------------------------------------------------------
+# Save multi image 
+# -------------------------------------------------------------------------------
+
+def _save_multi_image_result(state: ContentState, status: str) -> dict:
+    """Store the reviewed image in multi-agent results."""
+
+    if state.get("intent") != "multi":
+        return {}
+
+    results = dict(state.get("multi_agent_results", {}))
+
+    results["image"] = {
+        "content": state.get("image_path", ""),
+        "content_text": state.get("image_path", ""),
+        "image_url": state.get("image_url", ""),
+        "image_prompt": state.get("image_prompt", ""),
+        "message_id": state.get("generated_image_message_id"),
+        "status": status,
+    }
+
+    return {"multi_agent_results": results}
+
 
 def image_review_node(state: ContentState) -> dict:
     """Pause for image review and process the user's decision."""
@@ -140,7 +163,7 @@ def image_review_node(state: ContentState) -> dict:
         _update_image_message(
             state,
             status="rejected",
-            metadata_updates={"image_status": "rejected"},
+            metadata_updates={"image_status": "rejected"},           
         )
 
         logger.info("Image rejected: %s", image_path)
@@ -158,6 +181,7 @@ def image_review_node(state: ContentState) -> dict:
                 "response": decision,
                 "approved": False,
             },
+            **_save_multi_image_result(state, "rejected"),
             "messages": [
                 HumanMessage(content="Image review action: reject"),
                 AIMessage(content="Image rejected."),
@@ -186,6 +210,7 @@ def image_review_node(state: ContentState) -> dict:
             "response": decision,
             "approved": True,
         },
+        **_save_multi_image_result(state, "approved"),
         "messages": [
             HumanMessage(content="Image review action: approve"),
             AIMessage(content="Image approved."),

@@ -106,4 +106,18 @@ WRITING GUIDELINES
   Your task is research organization and content planning only.
 
 Return both deliverables as separate sections.
+Return both deliverables in the following order:
+
+# Research Report
+
+[Complete research report]
+
+---CONTENT_STRATEGY_START---
+
+# Content Strategy
+
+[Complete content strategy]
+
+Do not omit either deliverable.
+Do not generate the actual blog article or LinkedIn post.
 """

@@ -1,0 +1,113 @@
+# ContentAlchemy - local / single-host stack
+#
+#   docker compose up -d --build     start everything
+#   docker compose logs -f app       follow the app logs
+#   docker compose down              stop (data volumes are kept)
+#   docker compose down -v           stop and DELETE MongoDB and Azurite data
+#
+# Open http://localhost:8501
+#
+# API keys and provider settings come from .env (copy .env.example). The
+# `environment:` blocks below override only the values that must point at the
+# other containers instead of 127.0.0.1.
+#
+# AZURITE_ACCOUNT_KEY below is Azurite's publicly documented development key for
+# the built-in "devstoreaccount1" account. It is not a secret and only works
+# against the local emulator. Never reuse it for a real storage account.
+
+name: contentalchemy
+
+services:
+  app:
+    build: .
+    image: contentalchemy:latest
+    env_file: .env
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-contentalchemy_db}
+      AZURITE_ACCOUNT_NAME: devstoreaccount1
+      AZURITE_ACCOUNT_KEY: Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+      AZURITE_BLOB_ENDPOINT: http://azurite:10000/devstoreaccount1
+      AZURITE_CONTAINER_NAME: ${AZURITE_CONTAINER_NAME:-contentalchemy-images}
+    ports:
+      - "8501:8501"
+    volumes:
+      - app-logs:/app/logs
+      - app-images:/app/generated/images
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      azurite-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:8.0
+    environment:
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-contentalchemy_db}
+      CONTENTALCHEMY_USER_ID: ${CONTENTALCHEMY_USER_ID:-usr_local_001}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+      # Runs once, when the mongo-data volume is first created.
+      - ./scripts/init_mongodb.js:/docker-entrypoint-initdb.d/init_mongodb.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # Local Azure Blob Storage emulator for generated images.
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    command: azurite-blob --blobHost 0.0.0.0 --blobPort 10000 --location /data --skipApiVersionCheck --loose
+    ports:
+      - "10000:10000"
+    volumes:
+      - azurite-data:/data
+    restart: unless-stopped
+
+  # One-shot job: creates the blob container (the app does not create it).
+  azurite-init:
+    image: contentalchemy:latest
+    depends_on:
+      - azurite
+    environment:
+      AZURITE_ACCOUNT_KEY: Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+      AZURITE_CONTAINER_NAME: ${AZURITE_CONTAINER_NAME:-contentalchemy-images}
+    command:
+      - python
+      - -c
+      - |
+        import os, time
+        from azure.core.credentials import AzureNamedKeyCredential
+        from azure.core.exceptions import ResourceExistsError
+        from azure.storage.blob import BlobServiceClient
+        service = BlobServiceClient(
+            "http://azurite:10000/devstoreaccount1",
+            credential=AzureNamedKeyCredential("devstoreaccount1", os.environ["AZURITE_ACCOUNT_KEY"]),
+        )
+        name = os.environ["AZURITE_CONTAINER_NAME"]
+        for attempt in range(30):
+            try:
+                service.create_container(name)
+                print("created container", name)
+                break
+            except ResourceExistsError:
+                print("container exists", name)
+                break
+            except Exception as error:
+                print("waiting for azurite:", type(error).__name__)
+                time.sleep(2)
+        else:
+            raise SystemExit("azurite did not become ready")
+    restart: "no"
+
+volumes:
+  mongo-data:
+  azurite-data:
+  app-logs:
+  app-images:

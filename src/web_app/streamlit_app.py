@@ -36,7 +36,10 @@ st.logo(logo, icon_image = icon, size = "large")
 
 # The content page icon follows the type of the draft under review.
 review = st.session_state.get("review")
-create_icon = CONTENT_TYPES[review["type"]]["icon"] if review else ":material/description:"
+if st.session_state.get("multi") and st.session_state.get("conversation_type") == "multi":
+    create_icon = CONTENT_TYPES["multi"]["icon"]
+else:
+    create_icon = CONTENT_TYPES[review["type"]]["icon"] if review else ":material/description:"
 
 pages = {
     "chat": st.Page(render_chat, title="Chat", icon=":material/forum:", url_path="chat", default=True),

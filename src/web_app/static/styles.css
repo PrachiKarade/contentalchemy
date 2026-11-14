@@ -462,6 +462,7 @@ button[data-testid="stBaseButton-primary"]:hover {
 .ca-fc-interrupt { background: #FEF3C7; border-color: #F59E0B; color: #78350F; border-width: 2px; }
 .ca-fc-store     { background: #ECFDF5; border-color: #6EE7B7; color: #065F46; }
 .ca-fc-result    { background: #DCFCE7; border-color: #86EFAC; color: #14532D; }
+.ca-fc-router    { background: #FFFBEB; border-color: #D4A017; color: #713F12; border-style: dashed; border-width: 2px; }
 
 /* Hover popover with the node's internal details */
 .ca-fc-tip {
