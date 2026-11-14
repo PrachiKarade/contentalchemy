@@ -16,6 +16,7 @@ pausing for image review; the conversation is then marked failed.
 
 import os
 import re
+import time
 from collections.abc import Callable
 
 import streamlit as st
@@ -69,6 +70,17 @@ CONTENT_TYPES = {
         "icon": ":material/image:",
         "color": "orange",
     },
+    "multi": {
+        "label": "Multi-content",
+        "icon": ":material/dashboard_customize:",
+        "color": "yellow",
+    },
+    # Only produced as part of a multi-content request.
+    "strategy": {
+        "label": "Content strategy",
+        "icon": ":material/strategy:",
+        "color": "blue",
+    },
     "chat": {
         "label": "Chat",
         "icon": ":material/forum:",
@@ -101,7 +113,17 @@ AGENT_INTROS = {
         "style, orientation or quality, I'll ask one question at a time, then create it for your review. "
         "You can approve, edit the prompt, regenerate or reject it, and download it once approved."
     ),
+    "multi": (
+        "Hi {name}! I'm your **Multi-content orchestrator**. Ask for several pieces at once and I'll run each "
+        "agent in turn: a LinkedIn post, an SEO blog, an image, and research or a content strategy if you ask. "
+        "LinkedIn and image agents ask their questions here; every piece gets its own tab in the **Content** tab "
+        "for review.\n\n"
+        "*Try: \"Write a LinkedIn post and an SEO blog about AI in marketing, with an image\"*"
+    ),
 }
+
+# Deliverables a multi-content request can ask for, in display order.
+MULTI_DELIVERABLES = ["research", "strategy", "linkedin", "blog", "image"]
 
 
 def agent_intro(content_type: str, name: str) -> str:
@@ -125,6 +147,16 @@ STEP_LABELS = {
     "image_preference_interaction": "Saved your answer",
     "image_generator": "Generated the image",
     "image_review": "Recorded your review",
+    # Multi-content workflow
+    "multi_agent_orchestrator": "Planned the next deliverable",
+    "multi_content_generator": "Wrote a deliverable",
+    "multi_content_review": "Recorded your reviews",
+}
+
+# multi_content_generator writes one deliverable per run; its current_agent says which.
+MULTI_WRITER_LABELS = {
+    "blog_writer": "Wrote the SEO blog",
+    "linkedin_writer": "Wrote the LinkedIn post",
 }
 
 # Auto mode starts an agent when the message clearly asks for that content.
@@ -242,14 +274,44 @@ def fetch_approved_content(user_id: str) -> list[dict]:
 
     # Structured agent output (e.g. the SEO blog's keywords and outline), newest per conversation.
     structured = {}
+    # A multi-content conversation has one per deliverable type.
+    structured_by_type = {}
+    # The content strategist's plan, for conversations where it ran.
+    strategies = {}
     for message in list_user_messages_by_type(user_id, "generated_content", limit=200):
         if isinstance(message["content"], dict):
             structured.setdefault(message["conversation_id"], message["content"])
+            structured_by_type.setdefault((message["conversation_id"], message["content_type"]), message["content"])
+            if (message["content"].get("content_strategy") or "").strip():
+                strategies.setdefault(message["conversation_id"], message["content"]["content_strategy"])
 
     items = {}
     for message in list_user_messages_by_type(user_id, "final_content", limit=200):
         conversation = conversations.get(message["conversation_id"])
-        if conversation is None or conversation["conversation_id"] in items:
+        if conversation is None:
+            continue
+
+        if conversation["content_type"] == "multi":
+            # One dashboard item per approved deliverable.
+            piece_type = ui_type(message["content_type"])
+            item_id = f"{conversation['conversation_id']}:{piece_type}"
+            if item_id in items:
+                continue
+            items[item_id] = {
+                "id": item_id,
+                "conversation_id": conversation["conversation_id"],
+                "message_id": message["message_id"],
+                "type": piece_type,
+                "title": conversation["title"],
+                "prompt": conversation.get("topic") or conversation["title"],
+                "body": message["content"],
+                "data": structured_by_type.get((conversation["conversation_id"], message["content_type"]), {}),
+                "metadata": message.get("metadata", {}),
+                "created_at": message["created_at"],
+            }
+            continue
+
+        if conversation["conversation_id"] in items:
             continue
         items[conversation["conversation_id"]] = {
             "id": conversation["conversation_id"],
@@ -259,6 +321,7 @@ def fetch_approved_content(user_id: str) -> list[dict]:
             "prompt": conversation.get("topic") or conversation["title"],
             "body": message["content"],
             "data": structured.get(conversation["conversation_id"], {}),
+            "strategy": strategies.get(conversation["conversation_id"], ""),
             "metadata": message.get("metadata", {}),
             "created_at": message["created_at"],
         }
@@ -278,7 +341,7 @@ def list_approved_content(user_id: str) -> list[dict]:
 def save_approved_content(user_id: str, item: dict, body: str) -> None:
     if not body.strip():
         raise ValueError("Content cannot be empty.")
-    update_message(item["message_id"], item["id"], user_id, content=body.strip())
+    update_message(item["message_id"], item.get("conversation_id", item["id"]), user_id, content=body.strip())
     refresh_history()
 
 
@@ -311,33 +374,86 @@ def get_pending_payload(conversation_id: str) -> dict | None:
     return snapshot.interrupts[0].value if snapshot.interrupts else None
 
 
+def get_thread_state(conversation_id: str) -> dict:
+    """The workflow state of a thread; empty if its checkpoint is gone."""
+
+    return dict(get_workflow().get_state(thread_config(conversation_id)).values or {})
+
+
+def get_next_nodes(conversation_id: str) -> tuple[str, ...]:
+    """The nodes a paused thread runs next; empty once the workflow has ended."""
+
+    return tuple(get_workflow().get_state(thread_config(conversation_id)).next)
+
+
 def run_workflow(
     conversation_id: str,
     value: dict | Command,
     on_step: Callable[[str], None] | None = None,
     on_event: Callable[[dict], None] | None = None,
+    interrupt_after: list[str] | None = None,
 ) -> tuple[dict | None, dict]:
     """Run or resume a thread until it pauses or ends.
 
-    on_event receives what nodes stream with get_stream_writer(), e.g. blog text as it is written.
-    Returns (interrupt payload or None, workflow state).
+    interrupt_after also pauses the thread after those nodes finish (no payload); resume with None.
     """
 
     payload = None
     config = thread_config(conversation_id)
 
-    for mode, update in get_workflow().stream(value, config=config, stream_mode=["updates", "custom"]):
-        if mode == "custom":
-            if on_event:
-                on_event(update)
-            continue
-        for node in update:
-            if node == "__interrupt__":
-                payload = update[node][0].value
-            elif node in STEP_LABELS and on_step:
-                on_step(STEP_LABELS[node])
+    start_time = time.perf_counter()
+    status = "completed"
 
-    return payload, get_workflow().get_state(config).values
+    logger.info(
+        "Workflow started | Conversation ID: %s",
+        conversation_id,
+    )
+
+    try:
+        for mode, update in get_workflow().stream(
+            value,
+            config=config,
+            stream_mode=["updates", "custom"],
+            interrupt_after=interrupt_after,
+        ):
+            if mode == "custom":
+                if on_event:
+                    on_event(update)
+                continue
+
+            for node in update:
+                if node == "__interrupt__":
+                    # A pause from interrupt_after has no payload.
+                    if update[node]:
+                        payload = update[node][0].value
+                    status = "interrupted"
+
+                elif node in STEP_LABELS and on_step:
+                    output = update[node] if isinstance(update[node], dict) else {}
+                    on_step(MULTI_WRITER_LABELS.get(output.get("current_agent"), STEP_LABELS[node]))
+
+        state = get_workflow().get_state(config).values
+
+        return payload, state
+
+    except Exception:
+        status = "failed"
+        logger.exception(
+            "Workflow failed | Conversation ID: %s",
+            conversation_id,
+        )
+        raise
+
+    finally:
+        elapsed = time.perf_counter() - start_time
+
+        logger.info(
+            "Workflow finished | Conversation ID: %s | "
+            "Status: %s | Execution time: %.2f seconds",
+            conversation_id,
+            status,
+            elapsed,
+        )
 
 
 def image_failed(state: dict) -> bool:
@@ -402,6 +518,24 @@ def start_agent(
 ) -> tuple[str, dict | None, dict]:
     """Create a conversation for the request and run the workflow until it needs the user."""
 
+    conversation_id, initial_state = create_content_conversation(user_id, content_type, request, settings)
+
+    try:
+        payload, state = run_workflow(conversation_id, initial_state, on_step, on_event)
+    except Exception:
+        update_conversation(conversation_id, user_id, status="failed")
+        refresh_history()
+        raise
+
+    if payload is None and image_failed(state):
+        record_failure(user_id, conversation_id, content_type, state)
+    record_pause(user_id, conversation_id, content_type, payload)
+    return conversation_id, payload, state
+
+
+def create_content_conversation(user_id: str, content_type: str, request: str, settings: dict) -> tuple[str, dict]:
+    """Save the request as a new conversation. Returns its id and the workflow's initial state."""
+
     keywords = [word.strip() for word in settings["keywords"].split(",") if word.strip()]
     stored_type = repo_type(content_type)
 
@@ -429,18 +563,7 @@ def start_agent(
         "completed_agents": [],
         "errors": [],
     }
-
-    try:
-        payload, state = run_workflow(conversation_id, initial_state, on_step, on_event)
-    except Exception:
-        update_conversation(conversation_id, user_id, status="failed")
-        refresh_history()
-        raise
-
-    if payload is None and image_failed(state):
-        record_failure(user_id, conversation_id, content_type, state)
-    record_pause(user_id, conversation_id, content_type, payload)
-    return conversation_id, payload, state
+    return conversation_id, initial_state
 
 
 def answer_question(
@@ -620,6 +743,143 @@ def submit_image_decision(
     )
     refresh_history()
     return None, state
+
+
+# Multi-content workflow
+
+
+# A multi-content thread pauses after each of these nodes, so the UI can show every agent step
+# in the tab of the content type it works on, and open the next type's tab when the work moves on.
+MULTI_STEP_NODES = [
+    "query_handler",
+    "linkedin_profile_interaction",
+    "research_agent",
+    "content_strategist",
+    "multi_agent_orchestrator",
+    "multi_content_generator",
+    "image_request_analyzer",
+    "image_preference_interaction",
+    "image_generator",
+    "image_review",
+    "multi_content_review",
+]
+
+
+def advance_multi(
+    user_id: str,
+    conversation_id: str,
+    value: dict | Command | None,
+    on_step: Callable[[str], None] | None = None,
+    on_event: Callable[[dict], None] | None = None,
+) -> tuple[dict | None, dict, tuple[str, ...]]:
+    """Run a multi-content thread for one agent step.
+
+    value is the initial state, a Command(resume=...) answering the pending interrupt, or None to
+    continue after the previous step. Returns (payload, state, next nodes):
+    a payload means an agent waits for the user; no payload and no next nodes means the workflow
+    has ended (approved pieces are then saved); otherwise call again with None.
+    """
+
+    try:
+        payload, state = run_workflow(conversation_id, value, on_step, on_event, interrupt_after=MULTI_STEP_NODES)
+    except Exception:
+        # The thread stays paused at its last checkpoint, so the step can be retried.
+        logger.exception("Multi-content step failed for %s", conversation_id)
+        raise
+
+    next_nodes = get_next_nodes(conversation_id)
+
+    if payload is not None:
+        record_pause(user_id, conversation_id, "multi", payload)
+    elif not next_nodes:
+        finalize_multi(user_id, conversation_id, state)
+    return payload, state, next_nodes
+
+
+def record_multi_answer(user_id: str, conversation_id: str, answer_text: str) -> None:
+    add_message(conversation_id, user_id, "user", "answer", "multi", answer_text)
+
+
+def build_multi_decision(deliverable: str, action: str, edited_content: str = "", edited_prompt: str = "") -> dict:
+    """Validate a review decision for one multi-content deliverable.
+
+    Text deliverables are reviewed by multi_content_review (approve / edit / reject; an edit is
+    final). The image is reviewed by image_review (approve / edit / regenerate / reject).
+    """
+
+    is_image = deliverable == "image"
+    labels = IMAGE_REVIEW_LABELS if is_image else REVIEW_LABELS
+    if action not in labels:
+        raise ValueError(f"Unsupported review action for {deliverable}: {action}")
+
+    if is_image:
+        decision = {"action": action}
+        if action == "edit":
+            decision["edited_prompt"] = edited_prompt.strip()
+            if not decision["edited_prompt"]:
+                raise ValueError("The edited image prompt cannot be empty.")
+    else:
+        decision = {"action": action, "edited_content": edited_content.strip() if action == "edit" else ""}
+        if action == "edit" and not decision["edited_content"]:
+            raise ValueError("Edited content cannot be empty.")
+    return decision
+
+
+def record_multi_review(user_id: str, conversation_id: str, deliverable: str, decision: dict) -> None:
+    action = decision["action"]
+    label = (IMAGE_REVIEW_LABELS if deliverable == "image" else REVIEW_LABELS)[action]
+    if decision.get("edited_prompt"):
+        label += f": {decision['edited_prompt']}"
+    add_message(
+        conversation_id,
+        user_id,
+        "user",
+        "review",
+        repo_type(deliverable),
+        label,
+        metadata={"review_action": action, "deliverable": deliverable},
+    )
+
+
+def finalize_multi(user_id: str, conversation_id: str, state: dict) -> None:
+    """Save every approved deliverable as final content and close the conversation."""
+
+    results = state.get("multi_agent_results", {})
+    approved = []
+
+    for deliverable in state.get("requested_agents", []):
+        result = results.get(deliverable, {})
+        if result.get("status") != "approved":
+            continue
+
+        body = result.get("content_text") or result.get("content") or ""
+        if not isinstance(body, str) or not body.strip():
+            continue
+
+        metadata = {"deliverable": deliverable}
+        if deliverable == "image":
+            metadata["image_prompt"] = result.get("image_prompt", "")
+
+        add_message(
+            conversation_id,
+            user_id,
+            "assistant",
+            "final_content",
+            repo_type(deliverable),
+            body,
+            agent_name="image_review" if deliverable == "image" else "multi_content_review",
+            metadata=metadata,
+        )
+        approved.append(deliverable)
+
+    statuses = {deliverable: results.get(deliverable, {}).get("status", "missing") for deliverable in results}
+    update_conversation(
+        conversation_id,
+        user_id,
+        status="completed" if approved else "archived",
+        metadata_updates={"approval_status": "approved" if approved else "rejected", "deliverables": statuses},
+    )
+    refresh_history()
 
 
 # General chat

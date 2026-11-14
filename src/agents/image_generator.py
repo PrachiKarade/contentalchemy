@@ -39,6 +39,21 @@ def _get_image_preferences(state: ContentState) -> dict:
     return {field: state[field] for field in REQUIRED_IMAGE_FIELDS}
 
 
+def multi_image_request(state: ContentState) -> str:
+    """The image request inside a multi-deliverable request, focused on its topic."""
+
+    topic = (state.get("topic") or "").strip()
+    user_request = (state.get("user_request") or "").strip()
+
+    if not topic:
+        return user_request
+
+    return (
+        f"An image about: {topic}\n\n"
+        f"It accompanies other content from this request (create only the image):\n{user_request}"
+    )
+
+
 def _build_prompt_input(user_request: str, preferences: dict) -> str:
     return f"""
 User's original image request:
@@ -140,8 +155,13 @@ def image_generator_node(state: ContentState) -> dict:
     try:
         review_action = state.get("image_review_action", "")
 
+        # Initial generation of a multi request: the request also asks for other
+        # deliverables, so focus the image on the topic.
+        if review_action not in {"edit", "regenerate"} and state.get("intent") == "multi":
+            user_request = multi_image_request(state)
+
         # Initial generation: use the original user request.
-        if review_action not in {"edit", "regenerate"}:
+        elif review_action not in {"edit", "regenerate"}:
             user_request = (
                 state.get("user_request")
                 or state.get("image_prompt")

@@ -2,6 +2,7 @@ from langchain_core.tools import tool
 
 from src.agents.research_agent import research_topic
 from src.tools.internet_search_tool import internet_search_tool
+from src.guardrails.tool_guardrails import  ResearchToolInput
 
 
 @tool
@@ -15,7 +16,12 @@ def call_content_research_agent(
     Returns research findings, a summary, and source information.
     Use this tool to gather factual information before writing a blog.
     """
-    return research_topic(  topic = topic, target_audience=target_audience, num_results=5, )
+
+    validated = ResearchToolInput(
+        topic=topic,
+        target_audience=target_audience,
+    )
+    return research_topic(  topic = validated.topic, target_audience= validated.target_audience, num_results=5, )
 
 
 @tool

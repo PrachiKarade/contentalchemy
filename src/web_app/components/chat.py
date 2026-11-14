@@ -29,6 +29,8 @@ from src.web_app.assistant import (
     submit_image_decision,
 )
 from src.web_app.components.image_view import render_image_message
+from src.web_app.components.multi_view import render_multi_progress
+from src.web_app.components.research_view import parse_research
 from src.web_app.components.sidebar import get_settings
 from src.web_app.components.theme import DRAFT_HEIGHT
 from src.web_app.components.state import (
@@ -36,6 +38,10 @@ from src.web_app.components.state import (
     finish_image_review,
     go_to,
     is_image_review,
+    is_multi,
+    queue_multi_answer,
+    queue_multi_review,
+    start_multi_request,
     is_review,
     reset_conversation,
     show_payload,
@@ -57,6 +63,14 @@ DECISION_WORDS = {
     "approve": ["approve", "approved", "yes", "looks good", "lgtm"],
     "edit": ["edit", "change", "modify"],
     "reject": ["reject", "no", "discard"],
+}
+
+
+MULTI_DRAFT_NOUNS = {
+    "research": "research report",
+    "strategy": "content strategy",
+    "linkedin": "LinkedIn post",
+    "blog": "SEO blog",
 }
 
 
@@ -148,7 +162,15 @@ def render_question(message: dict, index: int, active: bool) -> tuple[dict, str]
 def render_draft(message: dict, active: bool) -> None:
     content_type = message.get("content_type", "chat")
     info = CONTENT_TYPES[content_type]
-    noun = "research report and content strategy" if content_type == "research" else "draft"
+    if message.get("multi"):
+        # A multi-content research deliverable is the report alone; the strategy is its own deliverable.
+        noun = MULTI_DRAFT_NOUNS.get(content_type, "draft")
+    else:
+        has_strategy = content_type == "research" and parse_research(message["content"])["strategy"].strip()
+        if content_type == "research":
+            noun = "research report and content strategy" if has_strategy else "research report"
+        else:
+            noun = "draft"
     with st.container(horizontal=True, vertical_alignment="center"):
         st.markdown(f"**Here's your {noun}.** Please review it.")
         st.badge(info["label"], icon=info["icon"], color=info["color"])
@@ -160,7 +182,7 @@ def render_draft(message: dict, active: bool) -> None:
     if not active:
         return
 
-    shown = "Both are" if content_type == "research" else "It is"
+    shown = "Both are" if noun == "research report and content strategy" else "It is"
     st.caption(f"Approve, edit or reject the {noun}. {shown} also shown in the Content tab.")
     with st.container(horizontal=True):
         st.button("Approve", type="primary", icon=":material/verified:", key="chat_approve", on_click=decide, args=("approve",))
@@ -175,6 +197,7 @@ def render_messages() -> tuple[dict, str] | None:
     messages = st.session_state.messages
     pending = st.session_state.pending
     review = st.session_state.get("review") or {}
+    multi_image = (st.session_state.get("multi") or {}).get("items", {}).get("image", {})
     answer = None
 
     # Only the newest image can be reviewed or downloaded; older ones are earlier attempts.
@@ -190,7 +213,11 @@ def render_messages() -> tuple[dict, str] | None:
                     message,
                     # Hide the buttons while a queued decision runs below.
                     active=is_current and is_image_review(pending) and not st.session_state.get("image_action"),
-                    approved=is_current and review.get("type") == "image" and review.get("status") == "approved",
+                    approved=is_current
+                    and (
+                        (review.get("type") == "image" and review.get("status") == "approved")
+                        or (is_multi() and multi_image.get("status") == "approved")
+                    ),
                 )
             elif message["kind"] == "question":
                 answer = render_question(message, index, latest and pending is not None and not is_review(pending))
@@ -334,6 +361,11 @@ def run_agent_step(label: str, step, spinner: str | None = None, container=None)
 
 
 def handle_answer(response: dict, answer_text: str) -> None:
+    if is_multi():
+        # Multi-content answers run in the question's tab on the Content page.
+        queue_multi_answer(response, answer_text)
+        st.rerun()
+
     pending = st.session_state.pending
     content_type = st.session_state.conversation_type
     add_bubble("user", answer_text, kind="answer")
@@ -395,6 +427,11 @@ IMAGE_ACTION_BUBBLES = {
 
 def handle_image_action(action: dict) -> None:
     """Send approve / edit / regenerate / reject to image_review, showing progress while it runs."""
+
+    if is_multi():
+        # Multi-content image decisions run in the Image tab on the Content page.
+        queue_multi_review("image", action["action"], edited_prompt=action["edited_prompt"])
+        st.rerun()
 
     review = st.session_state.review
     name = action["action"]
@@ -476,6 +513,11 @@ def handle_request(prompt: str, content_type: str) -> None:
     ):
         reset_conversation()
     st.session_state.conversation_type = content_type
+
+    if content_type == "multi":
+        # Each content type's progress and questions show in its own tab on the Content page.
+        start_multi_request(prompt, get_settings())
+        st.rerun()
 
     if content_type in STREAM_IN_CONTENT_TAB:
         # The draft streams live in the Content tab; the chat just points there.
@@ -566,12 +608,38 @@ def render_greeting(agent_type: str | None) -> None:
         st.markdown(agent_intro(agent_type or "auto", get_current_user()["username"]))
 
 
+def render_multi_pointer(multi: dict) -> None:
+    """Multi-content runs in the Content tab: show where it is and link there."""
+
+    if multi["requested"]:
+        render_multi_progress(multi)
+    if multi["done"]:
+        return
+    job = st.session_state.get("multi_job")
+    if job:
+        where = CONTENT_TYPES[job["owner"]]["label"] if job.get("owner") else "your request"
+        text = f"Working on **{where}**. Follow its progress in its tab in the Content tab."
+    else:
+        text = "Each content type has its own tab in the Content tab with its progress, questions and drafts."
+    with st.container(horizontal=True, vertical_alignment="center", key="multi_pointer"):
+        st.markdown(f":material/dashboard_customize: {text}")
+        st.button("Open Content tab", icon=":material/open_in_new:", type="tertiary", on_click=go_to, args=("create",))
+
+
 def render_chat() -> None:
     content_type = get_settings()["content_type"]
     # "auto" has no fixed agent: requests are routed by keywords, everything else is general chat.
     agent_type = None if content_type == "auto" else content_type
 
-    if agent_type:
+    multi = st.session_state.get("multi") if is_multi() else None
+    if multi:
+        render_multi_pointer(multi)
+    elif agent_type == "multi":
+        st.caption(
+            "Ask for several pieces at once. Each content type gets its own tab in the Content tab, "
+            "where its agent shows its progress and asks its questions."
+        )
+    elif agent_type:
         st.caption("Describe what you need. The agent may ask a few questions, then drafts your content for review.")
     else:
         st.caption(
@@ -599,7 +667,9 @@ def render_chat() -> None:
     # An image review decision queued by a button here or in the Content tab.
     image_action = st.session_state.pop("image_action", None)
 
-    if image_action and is_image_review(pending):
+    if prompt and multi and st.session_state.get("multi_job"):
+        st.toast("Still working on your content. Follow it in the Content tab.", icon=":material/hourglass_top:")
+    elif image_action and is_image_review(pending):
         handle_image_action(image_action)
     elif picked_answer:
         handle_answer(*picked_answer)

@@ -13,7 +13,7 @@ from src.web_app.assistant import CONTENT_TYPES, get_current_user, list_history,
 from src.web_app.components.state import change_content_type, open_conversation, reset_session
 
 # "auto" picks the agent from the message, or chats generally.
-CREATE_TYPES = ["auto", "linkedin", "blog", "research", "image"]
+CREATE_TYPES = ["auto", "linkedin", "blog", "research", "image", "multi"]
 
 TONES = ["Professional", "Friendly", "Bold", "Witty", "Inspirational"]
 
@@ -26,12 +26,14 @@ CONTENT_TYPE_CAPTIONS = {
     "blog": "Long-form, search-optimized article",
     "linkedin": "Engaging post with hashtags",
     "image": "AI-generated image you can review and download",
+    "multi": "Several pieces in one request, e.g. LinkedIn post + SEO blog + image",
 }
 
 HISTORY_TITLE_LENGTH = 34
 
-# The history list keeps this height (px) and scrolls, so the sidebar never grows.
-HISTORY_HEIGHT = 260
+# Past this many topics the history list keeps a fixed height (px, about five rows) and scrolls.
+HISTORY_VISIBLE = 5
+HISTORY_HEIGHT = 200
 
 SIDEBAR_KEYS = ["content_type", "tone", "audience", "audience_custom", "keywords", "history_date"]
 
@@ -60,6 +62,40 @@ def render_user(username: str) -> None:
     )
 
 
+def open_searched_conversation(user_id: str) -> None:
+    conversation_id = st.session_state.get("history_search")
+    # Clear the search so the dropdown is ready for the next lookup.
+    st.session_state["history_search"] = None
+    if conversation_id:
+        open_conversation(user_id, conversation_id)
+
+
+def render_history_search(user_id: str, conversations: list[dict]) -> None:
+    """Type-to-search dropdown over every conversation, across all days."""
+
+    if not conversations:
+        return
+    by_id = {conversation["conversation_id"]: conversation for conversation in conversations}
+
+    def label(conversation_id: str) -> str:
+        conversation = by_id[conversation_id]
+        info = CONTENT_TYPES.get(ui_type(conversation["content_type"]), CONTENT_TYPES["chat"])
+        day = conversation["updated_at"].strftime("%b %d")
+        return f"{info['icon']} {conversation['title']} · {day}"
+
+    st.selectbox(
+        "Search history",
+        list(by_id),
+        index=None,
+        format_func=label,
+        placeholder="Search history...",
+        key="history_search",
+        on_change=open_searched_conversation,
+        args=(user_id,),
+        label_visibility="collapsed",
+    )
+
+
 def render_history(user_id: str) -> None:
     st.markdown(":material/history: **History**")
     conversations = list_history(user_id)
@@ -83,8 +119,12 @@ def render_history(user_id: str) -> None:
         label_visibility="collapsed",
     )
 
+    render_history_search(user_id, conversations)
+
+    # Up to HISTORY_VISIBLE topics show in full; more than that scroll in a fixed-height list.
     active_id = st.session_state.get("conversation_id")
-    with st.container(height=HISTORY_HEIGHT, gap="xxsmall", border=False, key="history_list"):
+    height = HISTORY_HEIGHT if len(by_day[selected]) > HISTORY_VISIBLE else "content"
+    with st.container(height=height, gap="xxsmall", border=False, key="history_list"):
         if not by_day[selected]:
             st.caption("No conversations on this day yet." if conversations else "Your conversations will appear here.")
         for conversation in by_day[selected]:

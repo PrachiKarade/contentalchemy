@@ -1,0 +1,20 @@
+# Keep secrets, local state and tooling out of the Docker build context.
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+.git/
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vscode/
+.idea/
+
+logs/
+generated/
+tests/
+docs/

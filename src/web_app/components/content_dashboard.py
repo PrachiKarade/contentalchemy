@@ -12,11 +12,14 @@ from src.web_app.assistant import (
     save_approved_content,
 )
 from src.web_app.components.image_view import render_download, render_image
-from src.web_app.components.research_view import parse_research, render_sources, render_strategy
+from src.web_app.components.research_view import STRATEGY_TAB, parse_research, render_sources, render_strategy
 from src.web_app.components.state import go_to, make_title
 from src.web_app.components.theme import DRAFT_HEIGHT
 
 logger = setup_logger("content_dashboard")
+
+SOURCES_TAB = ":material/link: Sources"
+SEO_TAB = ":material/travel_explore: SEO details"
 
 META_DESCRIPTION_LIMIT = 160
 
@@ -65,7 +68,8 @@ def save_edit(item: dict) -> None:
 
 def remove_item(item: dict) -> None:
     try:
-        remove_approved_content(get_current_user()["user_id"], item["id"])
+        # A multi-content piece belongs to a conversation with other pieces; all of them are removed.
+        remove_approved_content(get_current_user()["user_id"], item.get("conversation_id", item["id"]))
     except Exception:
         logger.exception("Could not remove dashboard item")
         st.toast("Could not remove this content", icon=":material/error:")
@@ -89,53 +93,62 @@ def render_image_item(item: dict) -> None:
         )
 
 
+def item_title(item: dict) -> str:
+    if item["type"] == "blog":
+        # A blog body opens with "## Introduction"; use its SEO title instead.
+        return item.get("data", {}).get("seo_title") or item["title"]
+    if item["type"] == "research":
+        return make_title(item["body"], item["title"])
+    return item["title"]
+
+
+def render_header(item: dict) -> None:
+    """One line: "<Content type>: <title>" with the approval date beside it."""
+
+    label = CONTENT_TYPES[item["type"]]["label"]
+    with st.container(horizontal=True, vertical_alignment="bottom", gap="small"):
+        st.subheader(f"{label}: {item_title(item)}", anchor=False, width="content")
+        st.caption(f"{item['created_at']:%b %d, %Y}", width="content")
+
+
 def render_item(item: dict) -> None:
-    info = CONTENT_TYPES[item["type"]]
+    render_header(item)
 
     if item["type"] == "image":
-        with st.container(horizontal=True, vertical_alignment="center"):
-            st.badge(info["label"], icon=info["icon"], color=info["color"])
-            st.badge("Approved", icon=":material/verified:", color="green")
-            st.caption(f"Approved {item['created_at']:%b %d, %H:%M}")
-        st.subheader(item["title"], anchor=False)
-        st.caption(f"Request: {item['prompt']}")
         render_image_item(item)
         return
 
-    with st.container(horizontal=True, vertical_alignment="center"):
-        st.badge(info["label"], icon=info["icon"], color=info["color"])
-        st.badge("Approved", icon=":material/verified:", color="green")
-        st.caption(f"Approved {item['created_at']:%b %d, %H:%M}")
-    # A LinkedIn post has no heading, so its title would just repeat the request shown below.
-    if item["type"] != "linkedin":
-        if item["type"] == "blog":
-            # A blog body opens with "## Introduction"; use its SEO title instead.
-            title = item.get("data", {}).get("seo_title") or item["title"]
-        else:
-            title = make_title(item["body"], item["title"])
-        st.subheader(title, anchor=False)
-    st.caption(f"Request: {item['prompt']}")
+    research = parse_research(item["body"]) if item["type"] == "research" else None
+    # The Content strategy tab shows only when the content strategist ran for this piece.
+    strategy = ""
+    if research:
+        strategy = research["strategy"]
+    elif item["type"] == "blog":
+        strategy = item.get("strategy", "")
+    strategy = strategy.strip()
 
     tab_names = [":material/visibility: Preview", ":material/edit_note: Edit"]
-    if item["type"] == "research":
-        tab_names += [":material/strategy: Content strategy", ":material/link: Sources"]
+    if strategy:
+        tab_names.append(STRATEGY_TAB)
+    if research:
+        tab_names.append(SOURCES_TAB)
     elif item["type"] == "blog":
-        tab_names.append(":material/travel_explore: SEO details")
-    preview_tab, edit_tab, *extra_tabs = st.tabs(tab_names)
-    research = parse_research(item["body"]) if item["type"] == "research" else None
-    with preview_tab:
+        tab_names.append(SEO_TAB)
+    tabs = dict(zip(tab_names, st.tabs(tab_names)))
+
+    with tabs[tab_names[0]]:
         with st.container(border=True, height=DRAFT_HEIGHT, key=f"preview_{item['id']}"):
             st.markdown(research["report"] if research else item["body"])
-    if research:
-        strategy_tab, sources_tab = extra_tabs
-        with strategy_tab, st.container(height=DRAFT_HEIGHT, border=False):
-            render_strategy(research["strategy"])
-        with sources_tab, st.container(height=DRAFT_HEIGHT, border=False):
+    if strategy:
+        with tabs[STRATEGY_TAB], st.container(height=DRAFT_HEIGHT, border=False):
+            render_strategy(strategy)
+    if SOURCES_TAB in tabs:
+        with tabs[SOURCES_TAB], st.container(height=DRAFT_HEIGHT, border=False):
             render_sources(research["sources"])
-    elif extra_tabs:
-        with extra_tabs[0], st.container(height=DRAFT_HEIGHT, border=False):
+    if SEO_TAB in tabs:
+        with tabs[SEO_TAB], st.container(height=DRAFT_HEIGHT, border=False):
             render_seo_details(item["data"])
-    with edit_tab:
+    with tabs[tab_names[1]]:
         st.text_area(
             "Content",
             value=item["body"],
@@ -172,8 +185,6 @@ def render_item(item: dict) -> None:
 
 
 def render_dashboard() -> None:
-    st.caption("All content you have approved. Pick a piece to preview, edit or download it.")
-
     items = list_approved_content(get_current_user()["user_id"])
     if not items:
         st.info(
@@ -185,6 +196,12 @@ def render_dashboard() -> None:
 
     # Preselect the conversation picked in the sidebar history, if it has approved content.
     selected = st.session_state.pop("dashboard_selected", None)
+    # A multi-content conversation has one item per approved piece; select its first one.
+    if selected:
+        selected = next(
+            (item["id"] for item in items if item["id"] == selected or item.get("conversation_id") == selected),
+            selected,
+        )
     approved_ids = {item["id"] for item in items}
     if selected and selected not in approved_ids and selected == st.session_state.get("conversation_id"):
         # Opened from history, but nothing approved yet: its draft is in the Content tab.
