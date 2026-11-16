@@ -96,6 +96,7 @@ def _save_image_message(
     metadata = {
         "image_path": image_result["image_path"],
         "image_url": image_result["image_url"],
+        "storage_provider": image_result.get("storage_provider", "unknown"),
         "image_prompt": enhanced_prompt,
         "image_purpose": preferences["image_purpose"],
         "image_visual_style": preferences["image_visual_style"],
