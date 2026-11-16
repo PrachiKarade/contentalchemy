@@ -9,8 +9,8 @@ import requests
 from dotenv import load_dotenv
 
 from src.core.logger import setup_logger
-from src.integrations.image_storage import AzuriteImageStorage
 from src.integrations.image_provider_manager import ImageProviderManager
+from src.integrations.image_storage import ImageStorageManager
 
 
 load_dotenv()
@@ -22,7 +22,7 @@ logger = setup_logger("ImageClient")
 # Configuration
 # ---------------------------------------------------------
 
-image_storage = AzuriteImageStorage() 
+image_storage =  ImageStorageManager()
 image_provider_manager = ImageProviderManager()
 
 STABILITY_API_URL = ( "https://api.stability.ai/v2beta/stable-image/generate/core")
@@ -135,10 +135,11 @@ def _generate_with_stability(
     )
 
     return {
-         "image_path": storage_result["image_path"],
-         "image_url": storage_result["image_url"],
-         "revised_prompt": None,
-         "provider": provider_name,
+        "image_path": storage_result["image_path"],
+        "image_url": storage_result["image_url"],
+        "storage_provider": storage_result["storage_provider"],
+        "revised_prompt": None,
+        "provider": provider_name,
     }
 
 
