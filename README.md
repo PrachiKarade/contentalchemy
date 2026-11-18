@@ -303,13 +303,12 @@ pieces land in the **Content dashboard**, where they can be previewed, edited, d
 | *"Image generation is unavailable because the configured image provider has insufficient credits"* | Every enabled provider returned a credit/quota error | Top up Stability credits, or enable `openai` / `gemini` as fallbacks |
 | OpenAI image: `Invalid size '1024x1792'` / `model 'gpt-image-1' does not exist` | Size or model not available on your account | Set `OPENAI_IMAGE_MODEL` to a model you can access; portrait/landscape sizes differ by model |
 | Gemini image: *"Image models need a paid (billing-enabled) Gemini API key"* | Free-tier key | Enable billing or disable Gemini images |
-| Image generates but the step then fails with `TypeError: string indices must be integers` | Known defect: `image_clients.py` uses `AzuriteImageStorage` directly, whose `upload_image()` returns a URL string, but the caller expects a dict | Switch `image_clients.py` to `ImageStorageManager` (returns `{image_path, image_url}`). Note that the UI reads images from a local path, so local storage is what the review screen can display |
 | `Content generation failed. All configured providers were unsuccessful` | Every text provider failed; the message lists each reason | Check keys/quotas; add fallbacks to `TEXT_FALLBACK_PROVIDERS` |
 | `Query Handler returned invalid JSON` / `Research agent returned invalid JSON` | Model returned non-JSON | Retry; prefer `gpt-4o-mini` or Claude as primary; Perplexity is least reliable for strict JSON |
 | `Finding N cites a URL not present in the original search results` | Grounding guardrail rejected a hallucinated source | Retry; this is the guardrail working |
 | After a restart, *"This image can no longer be regenerated"* | `MemorySaver` checkpoints are in memory only | Approve/reject the existing draft or start a new conversation |
 | Running `pytest` makes real API calls | `tests/test_stability_image.py`, `test_azurite.py` and others execute at **import** | Run selected files, e.g. `pytest tests/test_query_handler.py`, or `--ignore` the script-style files |
-| Logs print `Key loaded: True / Key length / Base64 valid` | Debug `print()` calls at import in `image_storage.py` | Harmless; remove them for production |
+
 
 Logs are written to stdout and `logs/contentalchemy.log` (5 MB × 3 rotations). Every node logs
 `Node finished | Node: … | Status: completed|interrupted|failed | Execution time: …`.
