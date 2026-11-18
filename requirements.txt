@@ -5,6 +5,7 @@
 
 # Web UI (st.container autoscroll, horizontal layouts and bind="query-params" need 1.66+)
 streamlit==1.66.1
+argon2-cffi
 
 # Agent workflow: LangGraph graph, interrupts and custom streaming; SEO blog tool agent
 langgraph==1.2.18
