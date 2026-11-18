@@ -190,7 +190,7 @@ At least one search key is needed; research raises *"No search results found"* i
 | `MONGODB_URI` | — (**required**) | e.g. `mongodb://127.0.0.1:27017` or an Atlas `mongodb+srv://` URI |
 | `MONGODB_DATABASE` | `contentalchemy_db` | Database name |
 | `AZURITE_ACCOUNT_NAME` | `devstoreaccount1` | Blob account name |
-| `AZURITE_ACCOUNT_KEY` | — (**required at import**) | Blob account key. `image_clients.py` builds the storage client when the workflow is imported |
+| `AZURITE_ACCOUNT_KEY` | — (**required at import**) | Required for Azurite uploads; if unavailable, image storage falls back to local disk  |
 | `AZURITE_BLOB_ENDPOINT` | `http://127.0.0.1:10000/devstoreaccount1` | Blob endpoint |
 | `AZURITE_CONTAINER_NAME` | `contentalchemy-images` | Container for generated images (must exist) |
 | `CONTENTALCHEMY_USER_ID` | `usr_local_001` | User the single-user app runs as |
