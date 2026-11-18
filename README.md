@@ -77,7 +77,7 @@ are explained in [docs/architecture.md](docs/architecture.md):
 | Web search | **SerpApi (Google)** → **Tavily** fallback | Google organic results first; Tavily as an LLM-oriented, cheaper backup | Bing/Brave Search API, Exa, Perplexity Sonar (search + answer in one) |
 | Images | **Stability AI Stable Image Core** → OpenAI `gpt-image` → Gemini image | Cheapest per image first; fallback across three vendors | DALL·E 3, Midjourney (no official API), self-hosted SDXL |
 | Persistence | **MongoDB** (`pymongo`) | Flexible documents for heterogeneous drafts (blog JSON, LinkedIn fields, image metadata) | PostgreSQL + JSONB, SQLite (single-user) |
-| Image storage | **Azure Blob Storage** (Azurite emulator locally) | Same API locally and in Azure | S3 / MinIO, local disk only |
+| Image storage | **Azure Blob Storage** (Azurite locally, with local disk fallback) | Same API locally and in Azure | S3 / MinIO, local disk only |
 | Validation | **Pydantic v2** | Strict schemas (`extra="forbid"`) for LLM I/O | JSON Schema, Guardrails AI, NeMo Guardrails |
 | Observability | Rotating file logs + per-node timing; optional **LangSmith** tracing | Zero-cost baseline; LangSmith when you need traces | OpenTelemetry, Langfuse |
 
@@ -176,12 +176,12 @@ At least one search key is needed; research raises *"No search results found"* i
 | `IMAGE_FALLBACK_PROVIDERS` | *(empty)* | Comma-separated, e.g. `openai,gemini` |
 | `STABILITY_IMAGE_ENABLED` / `OPENAI_IMAGE_ENABLED` / `GEMINI_IMAGE_ENABLED` | `false` | Register each provider (`true` / `false`) |
 | `STABILITY_API_KEY` | — | Required when Stability is enabled |
-| `STABILITY_IMAGE_MODEL` | `core` | Logged; the endpoint is Stable Image Core |
+| `STABILITY_IMAGE_MODEL` | `core` |  the endpoint is Stable Image Core |
 | `OPENAI_IMAGE_MODEL` | `gpt-image-1` | OpenAI image model |
 | `GEMINI_IMAGE_MODEL` | `gemini-3.1-flash-image` | Gemini image model (needs a billing-enabled key) |
 | `IMAGE_TIMEOUT_SECONDS` | `120` | Stability HTTP timeout |
 
-`IMAGE_PROVIDER` (present in `.env.example`) is not read by the current code.
+
 
 ### Storage, database and app
 
@@ -190,10 +190,10 @@ At least one search key is needed; research raises *"No search results found"* i
 | `MONGODB_URI` | — (**required**) | e.g. `mongodb://127.0.0.1:27017` or an Atlas `mongodb+srv://` URI |
 | `MONGODB_DATABASE` | `contentalchemy_db` | Database name |
 | `AZURITE_ACCOUNT_NAME` | `devstoreaccount1` | Blob account name |
-| `AZURITE_ACCOUNT_KEY` | — (**required at import**) | Required for Azurite uploads; if unavailable, image storage falls back to local disk  |
+| `AZURITE_ACCOUNT_KEY` | —  | Required for Azurite uploads; if unavailable, image storage falls back to local disk  |
 | `AZURITE_BLOB_ENDPOINT` | `http://127.0.0.1:10000/devstoreaccount1` | Blob endpoint |
 | `AZURITE_CONTAINER_NAME` | `contentalchemy-images` | Container for generated images |
-| `CONTENTALCHEMY_USER_ID` | `usr_local_001` | User the single-user app runs as |
+| `CONTENTALCHEMY_USER_ID` | `usr_local_001` |  Fallback user ID for scripts and tests when no signed-in user session exists |
 | `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT` | — | Optional LangSmith tracing (read by LangChain/LangGraph) |
 
 Streamlit theming lives in `.streamlit/config.toml`. The files in `config/` (`development.yaml`,
@@ -246,7 +246,7 @@ payload, state = submit_decision(
 ---
 
 ## 6. Usage examples
-
+Users must register or log in before accessing the assistant. Conversations and generated content are associated with the signed-in user.
 Pick a content type in the sidebar (or leave **Auto**, which routes by keywords such as *linkedin*, *blog*,
 *image*, *research*), optionally set **Brand voice** (tone, audience, keywords), and type a request.
 
@@ -297,8 +297,7 @@ pieces land in the **Content dashboard**, where they can be previewed, edited, d
 |---|---|---|
 | `MONGODB_URI is missing from .env` | Variable not set | Add `MONGODB_URI` to `.env` |
 | History and dashboard are empty, logs show `ServerSelectionTimeoutError` | MongoDB unreachable (5 s timeout) | Start MongoDB; in Docker use `mongodb://mongodb:27017` |
-| `AZURITE_ACCOUNT_KEY is missing.` on startup | `image_clients.py` creates the blob client at import, so every workflow needs it | Set `AZURITE_ACCOUNT_KEY` (the Azurite dev key is in `docker-compose.yml`) |
-| `ContainerNotFound` when saving an image | Blob container doesn't exist; the app never creates it | Create it once: `docker compose` does this via `azurite-init`; locally run `python -m tests.test_azurite` |
+| Images are saved locally instead of Azurite | Azurite is unavailable, credentials are invalid, or the container is unavailable | Check the Azurite service, account settings, endpoint and container. The application falls back to local image storage |
 | `Unsupported image provider: stability` on startup | `IMAGE_PRIMARY_PROVIDER` isn't enabled | Set `STABILITY_IMAGE_ENABLED=true` (or change the primary) |
 | *"Image generation is unavailable because the configured image provider has insufficient credits"* | Every enabled provider returned a credit/quota error | Top up Stability credits, or enable `openai` / `gemini` as fallbacks |
 | OpenAI image: `Invalid size '1024x1792'` / `model 'gpt-image-1' does not exist` | Size or model not available on your account | Set `OPENAI_IMAGE_MODEL` to a model you can access; portrait/landscape sizes differ by model |
