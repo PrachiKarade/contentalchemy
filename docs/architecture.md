@@ -37,8 +37,8 @@ Solid boxes are agents (LangGraph nodes). Dashed boxes are **routers**: decision
 6. **Image path:** the Image Request Analyzer reads the preferences already in the request (purpose, style,
    orientation, quality). Image Preference Interaction asks for any that are missing, one question at a time.
    The Image Generation Agent then creates the image, and Image Review lets the user approve, edit, regenerate or reject it.
-7. **MongoDB:** every agent saves its output (questions, answers, drafts, quality scores, final content) to
-   MongoDB. The Streamlit UI reads it back for History, the Content tab and the Content dashboard.
+7. **MongoDB:** Conversation messages, questions, answers, drafts, review decisions and final content are persisted through the
+   application's repository layer. The Streamlit UI reads the stored data for History, the Content tab and the Content dashboard.
 
 ### Loops not drawn in the diagram
 
@@ -202,6 +202,9 @@ flowchart TB
 ### 1. Presentation layer: Streamlit UI
 
 `src/web_app/streamlit_app.py` and `src/web_app/components/`
+- **Authentication:** Users can register, log in, change their password
+  and log out. Protected assistant pages require an authenticated session.
+  Passwords are stored as Argon2 hashes.
 
 - **Sidebar** (`sidebar.py`): picks the content type (Auto, LinkedIn, SEO blog, Research, Image, Multi-content),
   sets the brand voice (tone, target audience, keywords), and lists conversation history by day, with a search
@@ -299,10 +302,9 @@ MongoDB stores everything that must outlive a session:
 
 | Repository | Collection | Holds |
 |---|---|---|
-| `user_repository` | users | App users |
-| `profile_repository` | user_profiles | LinkedIn profile as Markdown, one per user per conversation (not yet written by the live workflow) |
-| `conversation_repository` | conversations | One per request: type, topic, status (active, awaiting approval, completed, failed), brand voice |
-| `message_repository` | messages | Chat messages, questions, answers, drafts (with structured data and quality scores), final content |
+| `user_repository` | users | Application user accounts and authentication details |
+| `conversation_repository` | conversations | One record per request: content type, topic, status and brand voice |
+| `message_repository` | messages | Entire conversation history, including questions, answers, LinkedIn profile responses, drafts, review decisions and final content |
 
 History, the Content dashboard and reopening a conversation all read from these collections. The checkpointer
 only holds the live, paused workflow state.
