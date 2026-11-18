@@ -338,7 +338,7 @@ asks for strict JSON output, and the grounding check rejects any output that cit
 | Call to action | 15 | CTA present |
 
 Grades: **Excellent** ≥ 85 · **Good** ≥ 70 · **Needs Improvement** ≥ 50 · **Poor** < 50. 
-| Edit | Edited content is saved as final content and marked approved | Edited content is saved as final content and marked approved | New prompt → regenerate |
+| Edited content is saved as final content and marked approved | New prompt → regenerate |
 
 ---
 
