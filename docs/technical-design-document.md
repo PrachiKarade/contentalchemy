@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **System** | ContentAlchemy, a multi-agent AI content marketing assistant |
-| **Scope** | `src/` as of branch `feature/optimization-guardrails` (November 2026) |
+| **Scope** | `src/` as of branch `main` (November 2026) |
 | **Audience** | Engineers maintaining or extending the system, and reviewers assessing its design |
 | **Related** | [Architecture](architecture.md) · [API Reference](api-reference.md) · [Service Comparison](service-comparison.md) · [Deployment Guide](deployment-guide.md) |
 
@@ -21,7 +21,7 @@
 
 **Constraints**
 
-- Single-user, single-process Streamlit deployment (the user is `CONTENTALCHEMY_USER_ID`, default `usr_local_001`).
+- local email/password authentication
 - LLM output is untrusted: it may be malformed JSON, contain fabricated URLs or carry instructions injected from web pages.
 - Image generation is slow (5–60 s) and billed per image; text generation is billed per token.
 
@@ -202,7 +202,7 @@ filled by the Content Strategist and share one MongoDB message.
 | Store | Holds | Lifetime |
 |---|---|---|
 | `MemorySaver` checkpointer | Full `ContentState` per thread, pending interrupts | Process lifetime |
-| MongoDB | Conversations, messages (drafts, decisions, final content), profiles, users | Durable |
+| MongoDB | Conversations, messages (drafts, decisions, final content),  users | Durable |
 
 ---
 
@@ -337,8 +337,8 @@ asks for strict JSON output, and the grounding check rejects any output that cit
 | Article length | 20 | ≥ 1,000 words (tiers at 600 and 300) |
 | Call to action | 15 | CTA present |
 
-Grades: **Excellent** ≥ 85 · **Good** ≥ 70 · **Needs Improvement** ≥ 50 · **Poor** < 50. Edited drafts are re-scored
-before they return to review.
+Grades: **Excellent** ≥ 85 · **Good** ≥ 70 · **Needs Improvement** ≥ 50 · **Poor** < 50. 
+| Edit | Edited content is saved as final content and marked approved | Edited content is saved as final content and marked approved | New prompt → regenerate |
 
 ---
 
@@ -406,11 +406,7 @@ keys are treated as "provider unavailable", not as errors.
 ### 8.4 Image storage
 
 `AzuriteImageStorage` uploads PNGs to `<container>/<conversation_id>/image_<uuid>.png`. `ImageStorageManager` adds a
-fallback to `generated/images/` on local disk. **Known defect:** `image_clients.py` instantiates
-`AzuriteImageStorage` directly, whose `upload_image()` returns a URL string, while the caller indexes it as a dict
-(`storage_result["image_path"]`). The image is uploaded, but the step then raises `TypeError`. The review UI also reads
-images with `Path(path).read_bytes()`, so it can only display locally stored files. Switching to
-`ImageStorageManager` and serving blobs through a download (or SAS URL) resolves both.
+fallback to `generated/images/` on local disk. 
 
 ---
 
@@ -420,7 +416,7 @@ images with `Path(path).read_bytes()`, so it can only display locally stored fil
 
 | Area | Today | Limit |
 |---|---|---|
-| Users | One configured user ID | No authentication or tenancy in the UI (repositories already scope every query by `user_id`) |
+| Users | One configured user ID | reflect existing authentication (repositories already scope every query by `user_id`) |
 | Processes | One Streamlit process; graph cached per process | `MemorySaver` is per process, so paused threads don't survive restarts or load balancing |
 | Concurrency | Graph runs synchronously in the Streamlit script thread | Long nodes (20–60 s) block that session's reruns |
 | Data | Indexed queries, history capped at 30, dashboard reads ≤ 200 messages | Fine for thousands of conversations per user |
@@ -486,11 +482,10 @@ failure reasons, review outcomes (approve/edit/reject ratio) and quality-score d
 
 | # | Gap | Recommendation |
 |---|---|---|
-| 1 | Image storage type mismatch (§8.4) | Use `ImageStorageManager`; serve blobs to the UI |
-| 2 | Image and chat prompts bypass text fallback | Route through `text_provider_manager` |
-| 3 | `image_clients.generate_image` always reports `provider="stability"` | Return the provider name from `ImageProviderManager` |
-| 4 | Checkpoints lost on restart | Persistent checkpointer |
-| 5 | `ensure_indexes()` for conversations and messages is never called | Run `scripts/init_mongodb.js` (or call them at startup). Note `message_repository.ensure_indexes()` declares `ix_messages_conversation_created` on the same keys as the unique sequence index, which MongoDB rejects |
-| 6 | LinkedIn profile answers are not persisted to `user_profiles` | Call `upsert_profile` after the questions, and skip questions already answered |
-| 7 | `DEFAULT_MODEL` / `IMAGE_PROVIDER` in `.env` are unused, and `config/*.yaml` is empty | Remove them or wire them in |
-| 8 | Script-style test files run on import | Wrap them in `if __name__ == "__main__":` or move them to `scripts/` |
+| 1 | Image and chat prompts bypass text fallback | Route through `text_provider_manager` |
+| 2 | `image_clients.generate_image` always reports `provider="stability"` | Return the provider name from `ImageProviderManager` |
+| 3 | Checkpoints lost on restart | Persistent checkpointer |
+| 4 | `ensure_indexes()` for conversations and messages is never called | Run `scripts/init_mongodb.js` (or call them at startup). Note `message_repository.ensure_indexes()` declares `ix_messages_conversation_created` on the same keys as the unique sequence index, which MongoDB rejects |
+| 5 | LinkedIn profile answers are not persisted to `user_profiles` | |
+| 6 | `DEFAULT_MODEL` / `IMAGE_PROVIDER` in `.env` are unused, and `config/*.yaml` is empty | Remove them or wire them in |
+| 7 | Script-style test files run on import | Wrap them in `if __name__ == "__main__":` or move them to `scripts/` |
