@@ -11,7 +11,8 @@ interrupts by resuming the thread.
 Research runs research_agent -> content_strategist -> content_review, so the
 research draft is a research report followed by a content strategy. If the
 image provider fails, the workflow ends with image_status "failed" instead of
-pausing for image review; the conversation is then marked failed.
+pausing for image review; the content is then rejected automatically and the
+conversation ends (status "archived", approval_status "rejected").
 """
 
 import os
@@ -229,9 +230,18 @@ def get_workflow():
 # User and history
 
 
-@st.cache_data(ttl=600, show_spinner=False)
 def get_current_user() -> dict:
-    user_id = os.getenv("CONTENTALCHEMY_USER_ID", DEFAULT_USER_ID)
+    """The signed-in user (st.session_state["user_id"], set by src/web_app/auth.py).
+
+    Outside a sign-in (scripts, tests) it falls back to CONTENTALCHEMY_USER_ID.
+    """
+
+    user_id = st.session_state.get("user_id") or os.getenv("CONTENTALCHEMY_USER_ID", DEFAULT_USER_ID)
+    return load_user(user_id)
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def load_user(user_id: str) -> dict:
     try:
         user = get_user_by_id(user_id) or {}
     except Exception:
@@ -466,8 +476,11 @@ def workflow_error(state: dict) -> str:
     return state.get("image_error") or (state.get("errors") or ["The workflow stopped unexpectedly."])[-1]
 
 
-def record_failure(user_id: str, conversation_id: str, content_type: str, state: dict) -> None:
-    """Save why the workflow ended without a result and mark the conversation failed."""
+IMAGE_FAILURE_REJECTION = "Rejected automatically: image generation failed"
+
+
+def record_image_rejection(user_id: str, conversation_id: str, state: dict, image_message_id: str | None = None) -> None:
+    """Image generation failed: reject the content automatically and end the conversation."""
 
     error = workflow_error(state)
     try:
@@ -476,13 +489,42 @@ def record_failure(user_id: str, conversation_id: str, content_type: str, state:
             user_id,
             "assistant",
             "error",
-            repo_type(content_type),
+            "image",
             error,
             agent_name=state.get("current_agent"),
         )
-        update_conversation(conversation_id, user_id, status="failed", metadata_updates={"error": error})
+        add_message(
+            conversation_id,
+            user_id,
+            "assistant",
+            "review",
+            "image",
+            IMAGE_FAILURE_REJECTION,
+            agent_name="image_review",
+            metadata={"review_action": "reject", "auto_rejected": True},
+        )
+        if image_message_id:
+            # An earlier image was waiting for review; the failed retry rejects it too.
+            update_message(
+                image_message_id,
+                conversation_id,
+                user_id,
+                status="rejected",
+                metadata_updates={"image_status": "rejected"},
+            )
+        update_conversation(
+            conversation_id,
+            user_id,
+            status="archived",
+            metadata_updates={
+                "approval_status": "rejected",
+                "image_status": "failed",
+                "auto_rejected": True,
+                "error": error,
+            },
+        )
     except Exception:
-        logger.exception("Could not record the failure of %s", conversation_id)
+        logger.exception("Could not record the image rejection of %s", conversation_id)
     refresh_history()
 
 
@@ -528,7 +570,7 @@ def start_agent(
         raise
 
     if payload is None and image_failed(state):
-        record_failure(user_id, conversation_id, content_type, state)
+        record_image_rejection(user_id, conversation_id, state)
     record_pause(user_id, conversation_id, content_type, payload)
     return conversation_id, payload, state
 
@@ -580,7 +622,7 @@ def answer_question(
     add_message(conversation_id, user_id, "user", "answer", repo_type(content_type), answer_text)
     payload, state = run_workflow(conversation_id, Command(resume=response), on_step, on_event)
     if payload is None and image_failed(state):
-        record_failure(user_id, conversation_id, content_type, state)
+        record_image_rejection(user_id, conversation_id, state)
     record_pause(user_id, conversation_id, content_type, payload)
     return payload, state
 
@@ -718,8 +760,8 @@ def submit_image_decision(
         return payload, state
 
     if image_failed(state):
-        # Edit / regenerate could not create a new image; the workflow has ended.
-        record_failure(user_id, conversation_id, "image", state)
+        # Edit / regenerate could not create a new image: reject automatically and end.
+        record_image_rejection(user_id, conversation_id, state, image.get("message_id"))
         return None, state
 
     status = state.get("image_status")

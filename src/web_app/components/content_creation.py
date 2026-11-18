@@ -584,6 +584,15 @@ def render_content() -> None:
         return
 
     review = st.session_state.get("review")
+    if not review and st.session_state.get("conversation_rejected"):
+        st.warning(
+            "Image generation failed, so this content was rejected automatically and the conversation has ended.",
+            title="Content rejected",
+            icon=":material/block:",
+        )
+        st.button("New conversation", icon=":material/add_comment:", type="primary", key="rejected_new_content", on_click=reset_session)
+        return
+
     if not review:
         st.info(
             "Choose a content type in the sidebar and describe what you need in the Chat tab. "

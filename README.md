@@ -122,7 +122,7 @@ python -m tests.test_azurite      # creates AZURITE_CONTAINER_NAME if it doesn't
 streamlit run src/web_app/streamlit_app.py
 ```
 
-Open <http://localhost:8501>.
+Open <http://localhost:8501>. You land on the home page; register (name, email, password) or log in to open the assistant.
 
 ### Option B — Docker Compose
 
@@ -192,7 +192,7 @@ At least one search key is needed; research raises *"No search results found"* i
 | `AZURITE_ACCOUNT_NAME` | `devstoreaccount1` | Blob account name |
 | `AZURITE_ACCOUNT_KEY` | — (**required at import**) | Required for Azurite uploads; if unavailable, image storage falls back to local disk  |
 | `AZURITE_BLOB_ENDPOINT` | `http://127.0.0.1:10000/devstoreaccount1` | Blob endpoint |
-| `AZURITE_CONTAINER_NAME` | `contentalchemy-images` | Container for generated images (must exist) |
+| `AZURITE_CONTAINER_NAME` | `contentalchemy-images` | Container for generated images |
 | `CONTENTALCHEMY_USER_ID` | `usr_local_001` | User the single-user app runs as |
 | `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT` | — | Optional LangSmith tracing (read by LangChain/LangGraph) |
 

@@ -35,6 +35,7 @@ from src.web_app.components.sidebar import get_settings
 from src.web_app.components.theme import DRAFT_HEIGHT
 from src.web_app.components.state import (
     decide,
+    end_with_image_failure,
     finish_image_review,
     go_to,
     is_image_review,
@@ -44,6 +45,7 @@ from src.web_app.components.state import (
     start_multi_request,
     is_review,
     reset_conversation,
+    reset_session,
     show_payload,
     start_edit,
     start_image_edit,
@@ -228,7 +230,8 @@ def render_messages() -> tuple[dict, str] | None:
                     st.markdown(message["content"])
             elif message["kind"] == "error":
                 st.error(message["content"], icon=":material/error:")
-                st.caption("Send a new message to try again.")
+                if not st.session_state.get("conversation_rejected"):
+                    st.caption("Send a new message to try again.")
             elif message["kind"] == "warning":
                 st.warning(message["content"], icon=":material/warning:")
             else:
@@ -239,7 +242,7 @@ def render_messages() -> tuple[dict, str] | None:
 
 def chat_placeholder(content_type: str | None) -> str:
     pending = st.session_state.pending
-    if st.session_state.get("conversation_closed"):
+    if st.session_state.get("conversation_closed") or st.session_state.get("conversation_rejected"):
         return "Start a new conversation to continue"
     if is_review(pending):
         return "Type approve, edit or reject..."
@@ -339,8 +342,13 @@ def run_agent_step(label: str, step, spinner: str | None = None, container=None)
         else:
             progress.finish("Draft ready for review" if is_review(payload) else "Done")
 
+    if payload is None and image_failed(state):
+        # The content is rejected automatically and the conversation ends.
+        end_with_image_failure(state)
+        return True
+
     if payload is None:
-        if image_failed(state) or state.get("errors"):
+        if state.get("errors"):
             st.session_state.messages.append({"role": "assistant", "kind": "error", "content": workflow_error(state)})
         else:
             st.session_state.messages.append(
@@ -660,7 +668,22 @@ def render_chat() -> None:
             icon=":material/info:",
         )
 
-    prompt = st.chat_input(chat_placeholder(agent_type), submit_mode="disable", disabled=closed)
+    rejected = st.session_state.get("conversation_rejected", False)
+    if rejected:
+        with st.container(border=True):
+            st.warning(
+                "Image generation failed, so this content was rejected automatically and the conversation has ended.",
+                icon=":material/block:",
+            )
+            st.button(
+                "New conversation",
+                icon=":material/add_comment:",
+                type="primary",
+                key="rejected_new",
+                on_click=reset_session,
+            )
+
+    prompt = st.chat_input(chat_placeholder(agent_type), submit_mode="disable", disabled=closed or rejected)
 
     pending = st.session_state.pending
 

@@ -20,6 +20,7 @@ import streamlit as st
 from src.core.logger import setup_logger
 from src.web_app.assistant import (
     CONTENT_TYPES,
+    IMAGE_FAILURE_REJECTION,
     IMAGE_REVIEW_LABELS,
     MULTI_DELIVERABLES,
     REVIEW_LABELS,
@@ -49,6 +50,7 @@ CONVERSATION_KEYS = [
     "review_error",
     "edit_draft",
     "conversation_closed",
+    "conversation_rejected",
     "image_action",
     "image_editing",
     "image_edit_prompt",
@@ -291,6 +293,22 @@ def cancel_image_edit() -> None:
         st.session_state.pop(key, None)
 
 
+def end_with_image_failure(state: dict) -> None:
+    """Image generation failed: the content is rejected automatically and the conversation ends.
+
+    The chat then offers a "New conversation" button instead of the message box.
+    """
+
+    st.session_state["pending"] = None
+    st.session_state["review"] = None
+    st.session_state["messages"] += [
+        {"role": "assistant", "kind": "error", "content": workflow_error(state)},
+        {"role": "assistant", "kind": "text", "content": f"**{IMAGE_FAILURE_REJECTION}.** This conversation has ended."},
+    ]
+    st.session_state["conversation_rejected"] = True
+    st.toast("Image generation failed. The content was rejected.", icon=":material/block:")
+
+
 def finish_image_review(action: str, payload: dict | None, state: dict) -> None:
     """Update the chat and Content tab after an image review decision ran."""
 
@@ -304,11 +322,8 @@ def finish_image_review(action: str, payload: dict | None, state: dict) -> None:
         return
 
     if image_failed(state):
-        # The provider could not make a new image and the workflow has ended.
-        st.session_state["pending"] = None
-        st.session_state["review"] = None
-        st.session_state["messages"].append({"role": "assistant", "kind": "error", "content": workflow_error(state)})
-        st.toast("Image generation failed", icon=":material/error:")
+        # The provider could not make a new image: the content was rejected and the workflow has ended.
+        end_with_image_failure(state)
         return
 
     if state.get("image_status") == "rejected":
@@ -384,6 +399,10 @@ def messages_from_history(messages: list[dict]) -> list[dict]:
             bubbles.append({"role": "user", "kind": "answer", "content": message["content"]})
         elif message_type == "error":
             bubbles.append({"role": "assistant", "kind": "error", "content": message["content"]})
+        elif message_type == "review" and metadata.get("auto_rejected"):
+            bubbles.append(
+                {"role": "assistant", "kind": "text", "content": f"**{message['content']}.** This conversation has ended."}
+            )
         elif message_type == "final_content":
             text = (
                 "Approved! Download your image above."
@@ -523,6 +542,12 @@ def open_image_conversation(conversation: dict, messages: list[dict]) -> None:
     except Exception:
         logger.exception("Could not read the workflow state for %s", conversation_id)
         payload = None
+
+    if conversation.get("metadata", {}).get("auto_rejected"):
+        # Image generation failed and the content was rejected automatically.
+        st.session_state["review"] = None
+        st.session_state["conversation_rejected"] = True
+        return
 
     if payload is not None:
         st.session_state["pending"] = payload

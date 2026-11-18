@@ -17,6 +17,20 @@
     border-bottom: 1px solid var(--ca-border);
 }
 
+/* Log out: pinned to the right end of the header, after the top navigation. */
+.st-key-logout_corner {
+    position: fixed;
+    top: 0.65rem;
+    right: 3.5rem;
+    z-index: 999991;
+    width: auto !important;
+}
+
+.st-key-logout_corner button {
+    color: var(--ca-accent);
+    white-space: nowrap;
+}
+
 /* ---------- Sidebar: dark navy ---------- */
 [data-testid="stSidebar"] {
     background: var(--ca-nav);

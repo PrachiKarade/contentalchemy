@@ -78,17 +78,53 @@ def normalize_preference(key: str, value) -> str | None:
 
     if not isinstance(value, str) or not value.strip():
         return None
+
+    cleaned = value.strip()
+
+    # Reject null-like string values.
+    if cleaned.casefold() in {
+        "null",
+        "none",
+        "nil",
+        "n/a",
+        "na",
+        "undefined",
+    }:
+        return None
+
     if key == "image_orientation":
-        return _match_words(value, ORIENTATION_WORDS)
+        return _match_words(cleaned, ORIENTATION_WORDS)
+
     if key == "image_quality":
-        return _match_words(value, QUALITY_WORDS)
-    return value.strip()
+        return _match_words(cleaned, QUALITY_WORDS)
+
+    if key in {"image_purpose", "image_visual_style"}:
+        question = QUESTIONS_BY_KEY[key]
+        valid_options = {
+            option.casefold()
+            for option in question["options"]
+            if option != "Other"
+        }
+
+        if cleaned.casefold() not in valid_options:
+            return None
+
+    return cleaned
+
+
 
 # --------------------------------------------------------------------------
 # method:  for checking which image preferences are still missing
 # --------------------------------------------------------------------------
 def missing_image_preferences(state: ContentState) -> list[str]:
-    return [question["key"] for question in IMAGE_PREFERENCE_QUESTIONS if not state.get(question["key"])]
+    return [
+        question["key"]
+        for question in IMAGE_PREFERENCE_QUESTIONS
+        if not normalize_preference(
+            question["key"],
+            state.get(question["key"])
+        )
+    ]
 
 # --------------------------------------------------------------------------
 # method:  for routing to the next node based on missing image preferences
@@ -145,7 +181,8 @@ def image_request_analyzer_node(state: ContentState) -> dict:
 
     found = extract_image_preferences(state.get("user_request", ""))
     # Preferences already in state (set by the user explicitly) win.
-    updates = {key: value for key, value in found.items() if not state.get(key)}
+    updates = { key: value   for key, value in found.items()  if not normalize_preference(key, state.get(key))
+    }
 
     logger.info(
         "Image preferences from the request: %s; still missing: %s",
