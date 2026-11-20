@@ -30,25 +30,15 @@ erDiagram
 |---|---|---|
 | `user_id` | string | e.g. `usr_local_001` (`CONTENTALCHEMY_USER_ID`) |
 | `username` | string | Shown in the agents' greeting |
-| `auth_provider` | string | `local` today; the identity provider later |
-| `auth_subject` | string | Subject from the identity provider (defaults to `user_id`) |
+| `email` | string | User's email address; stored in lowercase and uniquely indexed |
+| `password_hash` | string | Password hash generated using Argon2 |
+| `auth_provider` | string | local for email/password authentication |
+| `auth_subject` | string | User's email address for local authentication |
 | `is_active` | bool | |
 | `created_at` | date | |
 
-### 1.2 `user_profiles`
 
-One Markdown LinkedIn profile per user per conversation (`profile_repository`).
-
-| Field | Type |
-|---|---|
-| `user_id`, `conversation_id` | string |
-| `profile_markdown` | string |
-| `created_at`, `updated_at` | date |
-
-> The live graph does not write this collection yet: LinkedIn answers stay in graph state and are stored as `answer`
-> messages. `src/utils/save_user_profile.py` and the repository are ready for when that is wired in.
-
-### 1.3 `conversations`
+### 1.2 `conversations`
 
 One per request (`conversation_repository`).
 
@@ -65,7 +55,7 @@ One per request (`conversation_repository`).
 | `last_message_sequence` | int | Counter incremented atomically by `add_message` |
 | `created_at`, `updated_at` | date | `updated_at` changes on every new message |
 
-### 1.4 `messages`
+### 1.3 `messages`
 
 Every turn, draft and decision, ordered by `sequence` within a conversation (`message_repository`).
 
@@ -109,9 +99,8 @@ Example `generated_content` message for a blog:
 
 | Collection | Index | Keys | Unique | Serves |
 |---|---|---|---|---|
-| `users` | `uq_user_auth` | `auth_provider, auth_subject` | ✓ | `create_user` upsert |
-| `users` | `uq_user_id` | `user_id` | ✓ | `get_user_by_id`, `update_username` |
-| `user_profiles` | `uq_profile_user_conversation` | `user_id, conversation_id` | ✓ | profile lookups |
+| `users` | Unique | `email` | Prevents multiple accounts from registering with the same email address |
+| `users` | `uq_user_id` | `user_id` (unique) | Ensures each user has a unique identifier |
 | `conversations` | `uq_conversation_id` | `conversation_id` | ✓ | every lookup and `add_message` |
 | `conversations` | `uq_conversation_thread_id` | `thread_id` | ✓ | thread ↔ conversation mapping |
 | `conversations` | `ix_conversations_user_updated` | `user_id, updated_at ↓` | | History sidebar |
@@ -146,7 +135,7 @@ db.runCommand({ collMod: "messages", validationAction: "error" })
 
 `scripts/init_mongodb.js` is idempotent. It:
 
-1. creates `users`, `user_profiles`, `conversations` and `messages` (or updates their validators if they already exist);
+1. creates `users`,  `conversations` and `messages` (or updates their validators if they already exist);
 2. creates the indexes in §1.5 and skips any whose keys are already covered by an index with another name;
 3. upserts the app user (`CONTENTALCHEMY_USER_ID`, display name `CONTENTALCHEMY_USERNAME`).
 
