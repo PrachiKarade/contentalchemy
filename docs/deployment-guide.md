@@ -19,7 +19,6 @@ Database: `MONGODB_DATABASE` (default `contentalchemy_db`). Four collections, al
 ```mermaid
 erDiagram
     users ||--o{ conversations : "user_id"
-    users ||--o{ user_profiles : "user_id"
     conversations ||--o{ messages : "conversation_id"
    
 ```
