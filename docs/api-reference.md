@@ -425,10 +425,6 @@ from src.integrations.image_provider_manager import ImageProviderManager
 ImageProviderManager().generate_image(prompt: str, size: str = "1024x1024") -> {"provider": str, "image_bytes": bytes}
 ```
 
-Every image provider implements `generate(prompt: str, size: str = "1024x1024") -> bytes` and has a `name`. Errors
-(`providers/images/provider_errors.py`): `ImageProviderError` (base), `InsufficientCreditsError`,
-`ProviderAccessError`, `ProviderRateLimitError`, `ProviderTemporaryError`.
-
 ### 4.3 Search — `src/integrations/serp_client.py`
 
 ```python
@@ -518,24 +514,16 @@ ensure_indexes() -> None
 | `error` | `record_failure` | Failure message |
 | `chat` | `save_chat_turn` | Chat turns |
 
-### 5.3 `profile_repository` (collection `user_profiles`)
+
+### 5.3 `user_repository`
 
 ```python
-upsert_profile(user_id, conversation_id, profile_markdown) -> dict
-get_profile(user_id, conversation_id) -> dict | None
-delete_profile(user_id, conversation_id) -> bool
-ensure_indexes() -> None   # unique (user_id, conversation_id); drops the legacy uq_profile_user_id index
-```
-
-### 5.4 `user_repository`
-
-```python
-create_user(user_id, username, auth_provider="local", auth_subject=None) -> dict   # upsert on (auth_provider, auth_subject)
+create_user(username, email,password) -> dict  
 get_user_by_id(user_id) -> dict | None
 update_username(user_id, username) -> bool
 ```
 
-### 5.5 Connection — `src/integrations/mongodb_client.py`
+### 5.4 Connection — `src/integrations/mongodb_client.py`
 
 ```python
 get_mongo_client() -> MongoClient       # cached; MONGODB_URI; serverSelectionTimeoutMS=5000
