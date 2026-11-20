@@ -14,7 +14,11 @@ it: every draft and image pauses for human review.
 | **Multi-content** | Several of the above from one request, coordinated by an orchestrator, each reviewed in its own tab |
 
 ---
+## 🚀 Live Demo
 
+**Try ContentAlchemy:** [Open the live app](https://prachikarade-contentalchemy-srcweb-appstreamlit-app-rszw5q.streamlit.app/)
+
+The application is deployed on Streamlit Community Cloud. Register with your name, email, and password to start using the assistant.
 ## Contents
 
 1. [Architecture](#1-architecture)
