@@ -14,85 +14,65 @@ How to set up MongoDB, build and run the containers, configure environments and 
 
 ## 1. MongoDB data model
 
-Database: `MONGODB_DATABASE` (default `contentalchemy_db`). Four collections, all written through `src/repositories/`.
+Database: `MONGODB_DATABASE` (default `contentalchemy_db`). Three
+collections, all accessed through `src/repositories/`.
 
-```mermaid
+``` mermaid
 erDiagram
     users ||--o{ conversations : "user_id"
     conversations ||--o{ messages : "conversation_id"
-   
+
+    users {
+        string user_id PK
+        string username
+        string email UK
+        string password_hash
+        string auth_provider
+        string auth_subject
+        boolean is_active
+        date created_at
+    }
+
+    conversations {
+        string conversation_id PK
+        string user_id FK
+        string content_type
+        string topic
+        string brand
+        string tone
+        array keywords
+        string target_audience
+        string objective
+        string status
+        date created_at
+        date updated_at
+    }
+
+    messages {
+        string message_id PK
+        string conversation_id FK
+        string user_id FK
+        string role
+        string content
+        date timestamp
+    }
 ```
 
-### 1.1 `users`
+The application uses these three collections:
 
-| Field | Type | Notes |
-|---|---|---|
-| `user_id` | string | e.g. `usr_local_001` (`CONTENTALCHEMY_USER_ID`) |
-| `username` | string | Shown in the agents' greeting |
-| `email` | string | User's email address; stored in lowercase and uniquely indexed |
-| `password_hash` | string | Password hash generated using Argon2 |
-| `auth_provider` | string | local for email/password authentication |
-| `auth_subject` | string | User's email address for local authentication |
-| `is_active` | bool | |
-| `created_at` | date | |
+-   **`users`** --- registered user accounts and authentication details.
+    Passwords are stored as Argon2 hashes.
+-   **`conversations`** --- conversation metadata associated with the
+    authenticated user.
+-   **`messages`** --- conversation messages, including LinkedIn profile
+    questionnaire responses and assistant replies.
 
+LinkedIn profile answers are stored as conversation messages. The
+application does not use a separate `user_profiles` collection.
 
-### 1.2 `conversations`
-
-One per request (`conversation_repository`).
-
-| Field | Type | Notes |
-|---|---|---|
-| `conversation_id` | string | `conv_<32 hex>`; also the LangGraph `thread_id` |
-| `thread_id` | string | Same value as `conversation_id` |
-| `user_id` | string | Owner; part of every query filter |
-| `content_type` | enum | `research`, `seo_blog`, `linkedin`, `image`, `strategy`, `multi`, `chat` |
-| `title` | string | First 60 characters of the request |
-| `topic`, `target_audience`, `tone` | string | From the request and brand-voice settings |
-| `status` | enum | `active` → `awaiting_approval` → `completed` / `archived` / `failed` |
-| `metadata` | object | `keywords`, `approval_status`, `error`, `deliverables` (multi), `removed_from_dashboard` |
-| `last_message_sequence` | int | Counter incremented atomically by `add_message` |
-| `created_at`, `updated_at` | date | `updated_at` changes on every new message |
-
-### 1.3 `messages`
-
-Every turn, draft and decision, ordered by `sequence` within a conversation (`message_repository`).
-
-| Field | Type | Notes |
-|---|---|---|
-| `message_id` | string | `msg_<32 hex>` |
-| `conversation_id`, `user_id` | string | |
-| `sequence` | int | 1, 2, 3 … per conversation |
-| `role` | enum | `user`, `assistant`, `system`, `tool` |
-| `message_type` | string | `request`, `question`, `answer`, `generated_content`, `generated_image`, `review`, `final_content`, `error`, `chat` |
-| `content_type` | enum | As for conversations |
-| `content` | any | Text, or a structured draft (blog JSON, LinkedIn fields, `{research_report, content_strategy}`) |
-| `agent_name` | string \| null | e.g. `research_agent`, `content_generator`, `image_review` |
-| `metadata` | object | `status`, `version`, `content_text`, `quality_*`, `image_*`, `options`, `review_action`, `deliverable` |
-| `status` | string | Set on image messages (`generated`, `pending`, `approved`, `rejected`) |
-| `created_at`, `updated_at` | date | |
-
-Example `generated_content` message for a blog:
-
-```json
-{
-  "message_id": "msg_3f…",
-  "conversation_id": "conv_9a…",
-  "user_id": "usr_local_001",
-  "sequence": 4,
-  "role": "assistant",
-  "message_type": "generated_content",
-  "content_type": "seo_blog",
-  "content": { "seo_title": "…", "meta_description": "…", "blog_article": "…", "sources": [ … ] },
-  "agent_name": "content_generator",
-  "metadata": {
-    "status": "draft", "version": 1, "content_text": "# …",
-    "quality_score": 78, "quality_grade": "Good",
-    "quality_details": { … }, "quality_suggestions": [ … ]
-  },
-  "created_at": { "$date": "2026-11-13T10:15:00Z" }
-}
-```
+The initialization script also seeds a default fallback user for scripts
+and tests. Normal application registration creates a separate user
+account.
 
 ### 1.5 Indexes
 
