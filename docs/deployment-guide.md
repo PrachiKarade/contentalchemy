@@ -21,7 +21,7 @@ erDiagram
     users ||--o{ conversations : "user_id"
     users ||--o{ user_profiles : "user_id"
     conversations ||--o{ messages : "conversation_id"
-    conversations ||--o| user_profiles : "conversation_id"
+   
 ```
 
 ### 1.1 `users`
