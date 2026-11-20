@@ -78,8 +78,8 @@ account.
 
 | Collection | Index | Keys | Unique | Serves |
 |---|---|---|---|---|
-| `users` | Unique | `email` | Prevents multiple accounts from registering with the same email address |
-| `users` | `uq_user_id` | `user_id` (unique) | Ensures each user has a unique identifier |
+| `users` | Unique email index | `email` | ✓ | Prevents multiple accounts from registering with the same email address |
+| `users` | `uq_user_id` | `user_id` | ✓ | Ensures each user has a unique identifier |
 | `conversations` | `uq_conversation_id` | `conversation_id` | ✓ | every lookup and `add_message` |
 | `conversations` | `uq_conversation_thread_id` | `thread_id` | ✓ | thread ↔ conversation mapping |
 | `conversations` | `ix_conversations_user_updated` | `user_id, updated_at ↓` | | History sidebar |
@@ -223,7 +223,7 @@ Operations:
 | `IMAGE_PRIMARY_PROVIDER`, `*_IMAGE_ENABLED`, provider keys | primary must be enabled | primary + one fallback |
 | `MONGODB_URI`, `MONGODB_DATABASE` | local / compose | Atlas or managed MongoDB, TLS, a dedicated user |
 | `AZURITE_*` | emulator defaults | A real Azure Storage account name, key, endpoint and container |
-| `CONTENTALCHEMY_USER_ID` | default | One per deployment (no multi-user auth yet) |
+| `CONTENTALCHEMY_USER_ID` | fallback for scripts and tests | Used when there is no authenticated user session |
 | `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT` | optional | optional (sends prompts and outputs to LangSmith) |
 
 Settings in older `.env` files that the code ignores: `DEFAULT_MODEL` (use `OPENAI_MODEL`) and `IMAGE_PROVIDER`.
@@ -273,7 +273,7 @@ Despite the `AZURITE_` prefix, `image_storage.py` works against any Azure Blob e
 | Option | Fits | Notes |
 |---|---|---|
 | **Docker Compose on one VM** | Demos, a single user or team | Simplest. Put Caddy or nginx in front for TLS and basic auth |
-| **Azure Container Apps + MongoDB Atlas + Azure Storage** | Hosted single-user deployment | Store keys as Container Apps secrets; set **min replicas = max replicas = 1** (see below); enable session affinity |
+| **Azure Container Apps + MongoDB Atlas + Azure Storage** | Hosted deployment | Store keys as Container Apps secrets; set **min replicas = max replicas = 1** (see below); enable session affinity |
 | **Azure App Service (container)** | As above | Enable WebSockets (Streamlit needs them) and ARR affinity |
 | **Streamlit Community Cloud** | Quick public demo | Put keys in `st.secrets` mapped to environment variables; needs hosted MongoDB and storage |
 
@@ -299,10 +299,9 @@ Make sure the proxy forwards WebSocket upgrades on `/_stcore/stream`.
 - [ ] Blob container created; storage key held in a secret store; the Azurite development key not used
 - [ ] Every enabled provider has a valid key **and** credit (Stability credits caused most image failures in testing)
 - [ ] `OPENAI_IMAGE_MODEL` is a model the account can access
-- [ ] Image storage defect addressed ([design doc §8.4](technical-design-document.md#84-image-storage)), otherwise image requests fail after upload
 - [ ] Debug `print()` calls removed from `image_storage.py`
 - [ ] Single replica (or a persistent checkpointer)
-- [ ] TLS and authentication in front of Streamlit (the app has no login)
+- [ ] HTTPS/TLS enabled; application email/password login configured
 - [ ] Logs shipped (stdout) or the `app-logs` volume collected; `logs/contentalchemy.log` rotates at 5 MB × 3
 - [ ] Healthcheck wired to the platform (`/_stcore/health`)
 - [ ] MongoDB backups scheduled (Atlas backups or `mongodump`)
